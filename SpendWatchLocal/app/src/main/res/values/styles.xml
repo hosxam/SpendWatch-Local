@@ -1,8 +1,13 @@
 <resources>
-    <style name="Theme.SpendWatch" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:colorPrimary">@color/primary</item>
-        <item name="android:colorPrimaryDark">@color/primary_variant</item>
-        <item name="android:colorAccent">@color/accent</item>
-        <item name="android:windowBackground">@color/background</item>
+    <style name="Theme.SpendWatch" parent="android:Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">#070B14</item>
+        <item name="android:colorAccent">#22D3EE</item>
+        <item name="android:colorControlActivated">#22D3EE</item>
+        <item name="android:navigationBarColor">#070B14</item>
+        <item name="android:statusBarColor">#070B14</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
     </style>
 </resources>
