@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">SpendWatch Local</string>
+    <string name="notification_listener_label">SpendWatch Bank Notification Listener</string>
+    <string name="permission_required_title">Notification Access Required</string>
+    <string name="permission_required_desc">SpendWatch needs notification access to detect bank transaction alerts entirely on-device.</string>
+    <string name="btn_enable_listener">Grant Notification Access</string>
+    <string name="privacy_guarantee">100% Local &amp; Private — No Internet Permission</string>
+    <string name="total_spent">Total Spent</string>
+    <string name="today">Today</string>
+    <string name="this_week">This Week</string>
+    <string name="this_month">This Month</string>
+    <string name="recent_transactions">Recent Transactions</string>
+    <string name="no_transactions">No outgoing transactions detected yet.</string>
+</resources>

@@ -1,0 +1,6 @@
+{
+  "name": "SpendWatch Local",
+  "description": "Completely local, privacy-first Android spending tracker tailored for UAE banking notifications with Ruya as primary bank. Zero internet permission.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
