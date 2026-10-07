@@ -8,6 +8,12 @@ on:
     paths:
       - 'SpendWatchLocal/**'
       - '.github/workflows/build-apk.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'SpendWatchLocal/**'
+      - '.github/workflows/build-apk.yml'
 
 jobs:
   build:
