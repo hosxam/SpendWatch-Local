@@ -1,0 +1,113 @@
+name: SpendWatch Emulator QA
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'SpendWatchLocal/**'
+      - '.github/workflows/emulator-qa.yml'
+
+jobs:
+  emulator-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Accept Android SDK licenses
+        run: yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
+
+      - name: Install Android SDK
+        run: /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "emulator" "system-images;android-34;google_apis;x86_64"
+
+      - name: Set up Gradle 8.4
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.4'
+
+      - name: Run parser unit tests
+        run: gradle -p SpendWatchLocal --stacktrace testDebugUnitTest
+
+      - name: Build app, QA sender and Android tests
+        run: gradle -p SpendWatchLocal --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest :qa-sender:assembleDebug
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Run Android emulator QA
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -eu
+
+            adb install -r SpendWatchLocal/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r SpendWatchLocal/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+            adb shell pm grant com.hossam.spendwatch android.permission.POST_NOTIFICATIONS
+            adb shell am instrument -w com.hossam.spendwatch.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
+            grep -q "OK (" instrumentation.txt
+
+            adb shell cmd notification allow_listener com.hossam.spendwatch/com.hossam.spendwatch.BankNotificationListener
+            adb install -r SpendWatchLocal/qa-sender/build/outputs/apk/debug/qa-sender-debug.apk
+            adb shell pm grant com.hossam.spendwatch.qasender android.permission.POST_NOTIFICATIONS
+
+            adb shell am start -W -n com.hossam.spendwatch/.MainActivity
+            sleep 2
+            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity
+            sleep 4
+
+            adb shell uiautomator dump /sdcard/spendwatch_ui.xml
+            adb pull /sdcard/spendwatch_ui.xml spendwatch_ui.xml
+            grep -q "AED 42.75" spendwatch_ui.xml
+
+            adb shell dumpsys notification --noredact > notifications_after_first.txt
+            grep -q "Transaction recorded" notifications_after_first.txt
+            grep -q "42.75" notifications_after_first.txt
+
+            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity
+            sleep 3
+
+            adb shell uiautomator dump /sdcard/spendwatch_ui_after_duplicate.xml
+            adb pull /sdcard/spendwatch_ui_after_duplicate.xml spendwatch_ui_after_duplicate.xml
+            grep -q "AED 42.75" spendwatch_ui_after_duplicate.xml
+            ! grep -q "AED 85.50" spendwatch_ui_after_duplicate.xml
+
+            adb exec-out screencap -p > spendwatch_home.png
+
+      - name: Upload QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpendWatch-Emulator-QA-Evidence
+          path: |
+            instrumentation.txt
+            spendwatch_ui.xml
+            spendwatch_ui_after_duplicate.xml
+            notifications_after_first.txt
+            spendwatch_home.png
+            SpendWatchLocal/app/build/reports/tests/testDebugUnitTest/**
+            SpendWatchLocal/app/build/reports/androidTests/**
+          if-no-files-found: warn
+          retention-days: 14
