@@ -10,6 +10,7 @@ android {
         applicationId = "com.hossam.spendwatch"
         minSdk = 24
         targetSdk = 34
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = 4
         versionName = "4.0.0"
     }
@@ -31,5 +32,7 @@ android {
 }
 
 dependencies {
-    // Only standard AndroidX dependencies - No internet or networking libraries!
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:core:1.6.1")
 }
