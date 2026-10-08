@@ -232,31 +232,32 @@ public class SpendWatchV4InstrumentedTest {
     @Test
     public void aedTotalsExcludeForeignCurrencyTransfersIncomeRefundsAndIgnoredRows() {
         long now = System.currentTimeMillis();
+        long base = now - 10 * 60_000L;
 
-        Transaction usd = makeSpend(50.0, now, "USD SHOP");
+        Transaction usd = makeSpend(50.0, base, "USD SHOP");
         usd.setCurrency("USD");
         assertTrue(db.insertTransaction(usd) > 0);
 
-        Transaction transfer = makeSpend(300.0, now + 20_000, "TRANSFER");
+        Transaction transfer = makeSpend(300.0, base + 20_000, "TRANSFER");
         transfer.setTransactionType("transfer_sent");
         transfer.setCategory("Transfers");
         assertTrue(db.insertTransaction(transfer) > 0);
 
-        Transaction income = makeSpend(500.0, now + 40_000, "SALARY");
+        Transaction income = makeSpend(500.0, base + 40_000, "SALARY");
         income.setTransactionType("income");
         income.setCategory("Income");
         assertTrue(db.insertTransaction(income) > 0);
 
-        Transaction refund = makeSpend(40.0, now + 60_000, "REFUND");
+        Transaction refund = makeSpend(40.0, base + 60_000, "REFUND");
         refund.setTransactionType("refund");
         refund.setCategory("Refunds");
         assertTrue(db.insertTransaction(refund) > 0);
 
-        Transaction ignored = makeSpend(70.0, now + 80_000, "IGNORED");
+        Transaction ignored = makeSpend(70.0, base + 80_000, "IGNORED");
         ignored.setIgnored(true);
         assertTrue(db.insertTransaction(ignored) > 0);
 
-        Transaction spend = makeSpend(125.0, now + 100_000, "REAL SPEND");
+        Transaction spend = makeSpend(125.0, base + 100_000, "REAL SPEND");
         assertTrue(db.insertTransaction(spend) > 0);
 
         assertEquals(125.0, db.getTotalSpentAedThisMonth(), 0.01);
