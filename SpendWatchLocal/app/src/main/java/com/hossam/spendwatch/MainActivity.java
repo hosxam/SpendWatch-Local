@@ -1,11 +1,13 @@
 package com.hossam.spendwatch;
 
-import android.Manifest;\nimport android.app.Activity;
+import android.Manifest;
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;\nimport android.content.pm.PackageManager;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Shader;
