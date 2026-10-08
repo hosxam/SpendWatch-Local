@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - main
       - v4-proof-qa
       - v4-full-regression
   pull_request:
