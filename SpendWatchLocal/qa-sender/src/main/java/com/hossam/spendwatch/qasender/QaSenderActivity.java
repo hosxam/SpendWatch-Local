@@ -25,8 +25,8 @@ public class QaSenderActivity extends Activity {
                     : new android.app.Notification.Builder(this);
 
             builder.setSmallIcon(android.R.drawable.stat_notify_more)
-                    .setContentTitle("Ruya")
-                    .setContentText("Your card was used for AED 42.75 at TEST CAFE. Successful transaction.")
+                    .setContentTitle("Card transaction")
+                    .setContentText("Your card ending 1234 was used for AED 42.75 at TEST CAFE. Successful transaction.")
                     .setStyle(new android.app.Notification.BigTextStyle()
                             .bigText("Your card was used for AED 42.75 at TEST CAFE. Successful transaction."))
                     .setAutoCancel(false);
