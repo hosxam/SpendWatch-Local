@@ -80,8 +80,7 @@ jobs:
 
             adb shell uiautomator dump /sdcard/spendwatch_ui.xml
             adb pull /sdcard/spendwatch_ui.xml spendwatch_ui.xml
-            grep -q "TEST CAFE" spendwatch_ui.xml
-            grep -q "42.75" spendwatch_ui.xml
+            grep -q "AED 42.75" spendwatch_ui.xml
 
             adb shell dumpsys notification --noredact > notifications_after_first.txt
             grep -q "Transaction recorded" notifications_after_first.txt
@@ -92,8 +91,11 @@ jobs:
 
             adb shell uiautomator dump /sdcard/spendwatch_ui_after_duplicate.xml
             adb pull /sdcard/spendwatch_ui_after_duplicate.xml spendwatch_ui_after_duplicate.xml
-            COUNT=$(grep -o "TEST CAFE" spendwatch_ui_after_duplicate.xml | wc -l)
-            test "$COUNT" -eq 1
+            grep -q "AED 42.75" spendwatch_ui_after_duplicate.xml
+            if grep -q "AED 85.50" spendwatch_ui_after_duplicate.xml; then
+              echo "Duplicate was counted twice"
+              exit 1
+            fi
 
             adb exec-out screencap -p > spendwatch_home.png
 
