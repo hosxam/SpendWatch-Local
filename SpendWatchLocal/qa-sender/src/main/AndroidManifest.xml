@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application android:label="SpendWatch QA Sender" android:theme="@style/Theme.QASender">
         <activity
-            android:name=".QaSenderActivity"
+            android:name="com.hossam.spendwatch.qasender.QaSenderActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
