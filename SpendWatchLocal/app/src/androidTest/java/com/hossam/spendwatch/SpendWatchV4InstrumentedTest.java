@@ -216,6 +216,126 @@ public class SpendWatchV4InstrumentedTest {
         }
     }
 
+
+    @Test
+    public void parser_handlesLargeAndGroupedAmountsInBothOrders() {
+        assertParsed("Card transaction", "Purchase AED 12345.67 at TEST SHOP", "com.ruya.bank",
+                12345.67, "card_purchase");
+        assertParsed("Card transaction", "Purchase AED 12,345.67 at TEST SHOP", "com.ruya.bank",
+                12345.67, "card_purchase");
+        assertParsed("Card transaction", "Purchase 12345.67 AED at TEST SHOP", "com.ruya.bank",
+                12345.67, "card_purchase");
+        assertParsed("Card transaction", "Purchase 12,345.67 AED at TEST SHOP", "com.ruya.bank",
+                12345.67, "card_purchase");
+    }
+
+    @Test
+    public void aedTotalsExcludeForeignCurrencyTransfersIncomeRefundsAndIgnoredRows() {
+        long now = System.currentTimeMillis();
+
+        Transaction usd = makeSpend(50.0, now, "USD SHOP");
+        usd.setCurrency("USD");
+        assertTrue(db.insertTransaction(usd) > 0);
+
+        Transaction transfer = makeSpend(300.0, now + 20_000, "TRANSFER");
+        transfer.setTransactionType("transfer_sent");
+        transfer.setCategory("Transfers");
+        assertTrue(db.insertTransaction(transfer) > 0);
+
+        Transaction income = makeSpend(500.0, now + 40_000, "SALARY");
+        income.setTransactionType("income");
+        income.setCategory("Income");
+        assertTrue(db.insertTransaction(income) > 0);
+
+        Transaction refund = makeSpend(40.0, now + 60_000, "REFUND");
+        refund.setTransactionType("refund");
+        refund.setCategory("Refunds");
+        assertTrue(db.insertTransaction(refund) > 0);
+
+        Transaction ignored = makeSpend(70.0, now + 80_000, "IGNORED");
+        ignored.setIgnored(true);
+        assertTrue(db.insertTransaction(ignored) > 0);
+
+        Transaction spend = makeSpend(125.0, now + 100_000, "REAL SPEND");
+        assertTrue(db.insertTransaction(spend) > 0);
+
+        assertEquals(125.0, db.getTotalSpentAedThisMonth(), 0.01);
+    }
+
+    @Test
+    public void transactionAndRecurringBillCrudWorks() {
+        long id = db.insertTransaction(makeSpend(90.0, System.currentTimeMillis(), "CRUD SHOP"));
+        assertTrue(id > 0);
+        assertTrue(db.updateTransaction(id, "Shopping", "fee", true));
+
+        Transaction loaded = db.getAllTransactions().get(0);
+        assertEquals("Shopping", loaded.getCategory());
+        assertEquals("fee", loaded.getTransactionType());
+        assertTrue(loaded.isIgnored());
+
+        assertTrue(db.deleteTransaction(id));
+        assertTrue(db.getAllTransactions().isEmpty());
+
+        long billId = db.saveRecurringBill(new RecurringBill(
+                0, "Phone", 250.0, "AED", 20, "Utilities & Telecom", true));
+        assertTrue(billId > 0);
+        assertEquals(1, db.getRecurringBills().size());
+        assertEquals(250.0, db.getRecurringBills().get(0).getAmount(), 0.01);
+
+        db.saveRecurringBill(new RecurringBill(
+                billId, "Phone", 275.0, "AED", 21, "Utilities & Telecom", false));
+        RecurringBill updated = db.getRecurringBills().get(0);
+        assertEquals(275.0, updated.getAmount(), 0.01);
+        assertEquals(21, updated.getDueDay());
+        assertFalse(updated.isActive());
+
+        assertTrue(db.deleteRecurringBill(billId));
+        assertTrue(db.getRecurringBills().isEmpty());
+    }
+
+    @Test
+    public void rolloverCarriesUnusedPreviousMonthMoney() {
+        db.saveBudget(new BudgetEnvelope(
+                0, "Groceries", 1000.0, true, 100.0, false));
+
+        Calendar previous = Calendar.getInstance();
+        previous.add(Calendar.MONTH, -1);
+        previous.set(Calendar.DAY_OF_MONTH, 15);
+        previous.set(Calendar.HOUR_OF_DAY, 12);
+        previous.set(Calendar.MINUTE, 0);
+        previous.set(Calendar.SECOND, 0);
+        previous.set(Calendar.MILLISECOND, 0);
+
+        Transaction previousSpend = makeSpend(400.0, previous.getTimeInMillis(), "PREV GROCERIES");
+        previousSpend.setCategory("Groceries");
+        assertTrue(db.insertTransaction(previousSpend) > 0);
+
+        int previousYm = previous.get(Calendar.YEAR) * 100 + (previous.get(Calendar.MONTH) + 1);
+        db.setSetting("last_rollover_month", String.valueOf(previousYm));
+
+        BudgetEnvelope groceries = null;
+        for (BudgetEnvelope envelope : db.getBudgets()) {
+            if ("Groceries".equals(envelope.getName())) {
+                groceries = envelope;
+                break;
+            }
+        }
+
+        assertNotNull(groceries);
+        assertEquals(700.0, groceries.getCarryAmount(), 0.01);
+        assertEquals(1700.0, groceries.getEffectiveAmount(), 0.01);
+    }
+
+    @Test
+    public void allPrimaryActivitiesLaunchWithoutCrash() {
+        try (ActivityScenario<BudgetActivity> scenario = ActivityScenario.launch(BudgetActivity.class)) {
+            scenario.onActivity(activity -> assertNotNull(activity.findViewById(android.R.id.content)));
+        }
+        try (ActivityScenario<RecurringActivity> scenario = ActivityScenario.launch(RecurringActivity.class)) {
+            scenario.onActivity(activity -> assertNotNull(activity.findViewById(android.R.id.content)));
+        }
+    }
+
     private StatusBarNotification findActiveNotification(String title) {
         if (notificationManager == null) return null;
         for (StatusBarNotification sbn : notificationManager.getActiveNotifications()) {
