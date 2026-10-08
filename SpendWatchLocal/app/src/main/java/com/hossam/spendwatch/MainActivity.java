@@ -1,11 +1,11 @@
 package com.hossam.spendwatch;
 
-import android.app.Activity;
+import android.Manifest;\nimport android.app.Activity;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
+import android.content.IntentFilter;\nimport android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Shader;
@@ -61,6 +61,9 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         database = SpendDatabase.getInstance(this);
+        NotificationHelper.ensureChannels(this);
+        MonthlySummaryReceiver.scheduleNext(this);
+        requestNotificationPermissionIfNeeded();
         configureWindow();
         buildShell();
     }
@@ -86,6 +89,14 @@ public class MainActivity extends Activity {
         if (receiverRegistered) {
             try { unregisterReceiver(transactionReceiver); } catch (Exception ignored) {}
             receiverRegistered = false;
+        }
+    }
+
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 4101);
         }
     }
 
@@ -157,6 +168,7 @@ public class MainActivity extends Activity {
 
     private void renderCurrent() {
         if (content == null) return;
+        SpendWatchWidget.updateAll(this);
         content.removeAllViews();
         switch (currentTab) {
             case 1: renderBudgets(); break;
@@ -720,7 +732,7 @@ public class MainActivity extends Activity {
         content.addView(settingRow("Clear transaction history", "Budgets and settings stay intact", UiKit.RED, this::confirmClearTransactions));
 
         content.addView(UiKit.gap(this, 20));
-        TextView version = UiKit.text(this, "SpendWatch Local 3.0  •  UAE-first  •  offline", 11, UiKit.MUTED, false);
+        TextView version = UiKit.text(this, "SpendWatch Local 4.0  •  UAE-first  •  offline", 11, UiKit.MUTED, false);
         version.setGravity(Gravity.CENTER);
         content.addView(version);
     }
