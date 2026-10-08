@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - v4-proof-qa
+      - v4-full-regression
   pull_request:
     branches:
       - main
@@ -87,8 +88,8 @@ jobs:
             sleep 3
 
             adb install -r SpendWatchLocal/qa-sender/build/outputs/apk/debug/qa-sender-debug.apk
-            adb shell pm grant com.hossam.spendwatch.qasender android.permission.POST_NOTIFICATIONS
-            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity
+            adb shell pm grant com.ruya.bank android.permission.POST_NOTIFICATIONS
+            adb shell am start -n com.ruya.bank/com.hossam.spendwatch.qasender.QaSenderActivity
             sleep 5
 
             adb exec-out run-as com.hossam.spendwatch cat databases/spendwatch_uae.db > /tmp/spendwatch.db
