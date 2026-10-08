@@ -11,4 +11,4 @@
     <string name="this_month">This Month</string>
     <string name="recent_transactions">Recent Transactions</string>
     <string name="no_transactions">No outgoing transactions detected yet.</string>
-</resources>
+    <string name="widget_description">See monthly spending, safe-to-spend and upcoming bills</string>\n</resources>
