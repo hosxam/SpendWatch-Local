@@ -1,0 +1,144 @@
+name: Prove SpendWatch v4
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - v4-proof-qa
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'SpendWatchLocal/**'
+      - '.github/workflows/qa-spendwatch-v4.yml'
+
+jobs:
+  emulator-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.4
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.4'
+
+      - name: Install Android SDK
+        run: |
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager             "platform-tools" "platforms;android-34" "build-tools;34.0.0"             "emulator" "system-images;android-34;google_apis;x86_64"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"'             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+
+      - name: Compile app, QA sender and tests
+        run: |
+          gradle -p SpendWatchLocal             :app:assembleDebug             :app:assembleDebugAndroidTest             :qa-sender:assembleDebug             :app:lintDebug
+
+      - name: Verify APK signature and privacy permissions
+        run: |
+          APK=SpendWatchLocal/app/build/outputs/apk/debug/app-debug.apk
+          /usr/local/lib/android/sdk/build-tools/34.0.0/apksigner verify --verbose "$APK"
+          /usr/local/lib/android/sdk/build-tools/34.0.0/aapt2 dump permissions "$APK" | tee /tmp/permissions.txt
+          if grep -q "android.permission.INTERNET" /tmp/permissions.txt; then
+            echo "FAIL: INTERNET permission found"
+            exit 1
+          fi
+          grep -q "android.permission.POST_NOTIFICATIONS" /tmp/permissions.txt
+          grep -q "android.permission.RECEIVE_BOOT_COMPLETED" /tmp/permissions.txt
+
+      - name: Run emulator proof suite
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            set -euxo pipefail
+
+            APP_APK=SpendWatchLocal/app/build/outputs/apk/debug/app-debug.apk
+            TEST_APK=SpendWatchLocal/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            SENDER_APK=SpendWatchLocal/qa-sender/build/outputs/apk/debug/qa-sender-debug.apk
+
+            adb install -r "$APP_APK"
+            adb install -r "$TEST_APK"
+            adb shell pm grant com.hossam.spendwatch android.permission.POST_NOTIFICATIONS
+
+            echo "=== Instrumentation suite ==="
+            adb shell am instrument -w               com.hossam.spendwatch.test/androidx.test.runner.AndroidJUnitRunner               | tee /tmp/instrumentation.txt
+            grep -q "OK (" /tmp/instrumentation.txt
+
+            echo "=== Real NotificationListenerService callback ==="
+            adb shell cmd notification allow_listener               com.hossam.spendwatch/com.hossam.spendwatch.BankNotificationListener
+            adb shell am force-stop com.hossam.spendwatch
+            adb shell monkey -p com.hossam.spendwatch -c android.intent.category.LAUNCHER 1
+            sleep 3
+
+            adb install -r "$SENDER_APK"
+            adb shell pm grant com.hossam.spendwatch.qasender android.permission.POST_NOTIFICATIONS
+            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity
+            sleep 5
+
+            adb exec-out run-as com.hossam.spendwatch               cat databases/spendwatch_uae.db > /tmp/spendwatch.db
+
+            python3 - <<'PY'
+            import sqlite3
+            con = sqlite3.connect('/tmp/spendwatch.db')
+            rows = con.execute(
+                "select amount,currency,merchant,bank_source,transaction_type "
+                "from transactions order by id desc limit 5"
+            ).fetchall()
+            print("Recorded rows:", rows)
+            assert any(
+                abs(r[0]-42.75) < 0.001
+                and r[1] == 'AED'
+                and r[3] == 'Ruya'
+                and r[4] in ('card_purchase','pos','online')
+                for r in rows
+            ), rows
+            PY
+
+            echo "=== Immediate confirmation notification ==="
+            adb shell dumpsys notification --noredact > /tmp/notifications.txt
+            grep -q "Transaction recorded" /tmp/notifications.txt
+            grep -q "42.75" /tmp/notifications.txt
+
+            echo "=== Monthly summary alarm is scheduled ==="
+            adb shell dumpsys alarm > /tmp/alarms.txt
+            grep -q "com.hossam.spendwatch" /tmp/alarms.txt
+
+            echo "=== Widget provider registered ==="
+            adb shell dumpsys package com.hossam.spendwatch > /tmp/package.txt
+            grep -q "SpendWatchWidget" /tmp/package.txt
+
+            echo "ALL EMULATOR PROOFS PASSED"
+
+      - name: Upload QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpendWatch-v4-QA-evidence
+          path: |
+            SpendWatchLocal/app/build/reports/lint-results-debug.html
+            SpendWatchLocal/app/build/reports/androidTests/
+            SpendWatchLocal/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: warn
+          retention-days: 14
