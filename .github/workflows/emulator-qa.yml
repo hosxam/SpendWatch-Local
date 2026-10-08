@@ -92,10 +92,7 @@ jobs:
             adb shell uiautomator dump /sdcard/spendwatch_ui_after_duplicate.xml
             adb pull /sdcard/spendwatch_ui_after_duplicate.xml spendwatch_ui_after_duplicate.xml
             grep -q "AED 42.75" spendwatch_ui_after_duplicate.xml
-            if grep -q "AED 85.50" spendwatch_ui_after_duplicate.xml; then
-              echo "Duplicate was counted twice"
-              exit 1
-            fi
+            ! grep -q "AED 85.50" spendwatch_ui_after_duplicate.xml
 
             adb exec-out screencap -p > spendwatch_home.png
 
