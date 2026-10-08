@@ -1,6 +1,7 @@
 package com.hossam.spendwatch;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.BroadcastReceiver;
@@ -70,6 +71,7 @@ public class MainActivity extends Activity {
         buildShell();
     }
 
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
     @Override
     protected void onResume() {
         super.onResume();

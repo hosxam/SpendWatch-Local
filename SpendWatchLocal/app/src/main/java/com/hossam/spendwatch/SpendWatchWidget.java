@@ -32,28 +32,32 @@ public class SpendWatchWidget extends AppWidgetProvider {
     }
 
     private static void updateWidgets(Context context, AppWidgetManager manager, int[] ids) {
+        for (int id : ids) {
+            manager.updateAppWidget(id, buildViews(context, id));
+        }
+    }
+
+    static RemoteViews buildViews(Context context, int widgetId) {
         SpendDatabase db = SpendDatabase.getInstance(context);
         double spent = db.getTotalSpentAedThisMonth();
         double safe = db.getSafeToSpendRestOfMonth();
         double income = db.getMonthlyIncome();
         double bills = db.getUpcomingRecurringAedThisMonth();
 
-        for (int id : ids) {
-            RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_spendwatch);
-            views.setTextViewText(R.id.widget_spent, money(spent));
-            views.setTextViewText(R.id.widget_safe, income > 0 ? money(safe) : "Set income");
-            views.setTextViewText(R.id.widget_bills, money(bills));
+        RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_spendwatch);
+        views.setTextViewText(R.id.widget_spent, money(spent));
+        views.setTextViewText(R.id.widget_safe, income > 0 ? money(safe) : "Set income");
+        views.setTextViewText(R.id.widget_bills, money(bills));
 
-            Intent open = new Intent(context, MainActivity.class);
-            PendingIntent pending = PendingIntent.getActivity(
-                    context,
-                    id,
-                    open,
-                    PendingIntent.FLAG_UPDATE_CURRENT | immutableFlag()
-            );
-            views.setOnClickPendingIntent(R.id.widget_root, pending);
-            manager.updateAppWidget(id, views);
-        }
+        Intent open = new Intent(context, MainActivity.class);
+        PendingIntent pending = PendingIntent.getActivity(
+                context,
+                widgetId,
+                open,
+                PendingIntent.FLAG_UPDATE_CURRENT | immutableFlag()
+        );
+        views.setOnClickPendingIntent(R.id.widget_root, pending);
+        return views;
     }
 
     private static String money(double value) {

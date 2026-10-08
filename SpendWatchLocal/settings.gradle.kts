@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "SpendWatchLocal"
 include(":app")
+include(":qa-sender")
