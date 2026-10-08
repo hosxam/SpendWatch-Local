@@ -7,7 +7,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.hossam.spendwatch.qasender"
+        applicationId = "com.ruya.bank"
         minSdk = 24
         targetSdk = 34
         versionCode = 1
