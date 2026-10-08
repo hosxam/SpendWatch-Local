@@ -41,8 +41,8 @@ jobs:
       - name: Run parser unit tests
         run: gradle -p SpendWatchLocal --stacktrace testDebugUnitTest
 
-      - name: Build app and Android tests
-        run: gradle -p SpendWatchLocal --stacktrace assembleDebug assembleDebugAndroidTest
+      - name: Build app, QA sender and Android tests
+        run: gradle -p SpendWatchLocal --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest :qa-sender:assembleDebug
 
       - name: Enable KVM
         run: |
@@ -70,27 +70,29 @@ jobs:
             grep -q "OK (" instrumentation.txt
 
             adb shell cmd notification allow_listener com.hossam.spendwatch/com.hossam.spendwatch.BankNotificationListener
+            adb install -r SpendWatchLocal/qa-sender/build/outputs/apk/debug/qa-sender-debug.apk
+            adb shell pm grant com.hossam.spendwatch.qasender android.permission.POST_NOTIFICATIONS
+
             adb shell am start -W -n com.hossam.spendwatch/.MainActivity
             sleep 2
-
-            adb shell cmd notification post -t "Ruya" spendwatch_e2e_1 "Your Ruya card ending 4091 was used for AED 142.50 at CARREFOUR DEIRA."
-            sleep 3
+            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity
+            sleep 4
 
             adb shell uiautomator dump /sdcard/spendwatch_ui.xml
             adb pull /sdcard/spendwatch_ui.xml spendwatch_ui.xml
-            grep -q "CARREFOUR" spendwatch_ui.xml
-            grep -q "142.50" spendwatch_ui.xml
+            grep -q "TEST CAFE" spendwatch_ui.xml
+            grep -q "42.75" spendwatch_ui.xml
 
             adb shell dumpsys notification --noredact > notifications_after_first.txt
             grep -q "Transaction recorded" notifications_after_first.txt
-            grep -q "AED 142.50" notifications_after_first.txt
+            grep -q "42.75" notifications_after_first.txt
 
-            adb shell cmd notification post -t "Ruya" spendwatch_e2e_2 "Your Ruya card ending 4091 was used for AED 142.50 at CARREFOUR DEIRA."
-            sleep 2
+            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity
+            sleep 3
 
             adb shell uiautomator dump /sdcard/spendwatch_ui_after_duplicate.xml
             adb pull /sdcard/spendwatch_ui_after_duplicate.xml spendwatch_ui_after_duplicate.xml
-            COUNT=$(grep -o "CARREFOUR" spendwatch_ui_after_duplicate.xml | wc -l)
+            COUNT=$(grep -o "TEST CAFE" spendwatch_ui_after_duplicate.xml | wc -l)
             test "$COUNT" -eq 1
 
             adb exec-out screencap -p > spendwatch_home.png
