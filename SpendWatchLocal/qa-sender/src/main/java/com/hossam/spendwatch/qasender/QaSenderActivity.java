@@ -26,9 +26,9 @@ public class QaSenderActivity extends Activity {
 
             builder.setSmallIcon(android.R.drawable.stat_notify_more)
                     .setContentTitle("Ruya")
-                    .setContentText("Your card was used for AED 42.75 at TEST CAFE. Successful transaction.")
+                    .setContentText("Debit Card Purchase of AED 39.95 from TIM HORTONS")
                     .setStyle(new android.app.Notification.BigTextStyle()
-                            .bigText("Your card was used for AED 42.75 at TEST CAFE. Successful transaction."))
+                            .bigText("Dear Customer, Debit Card Purchase of AED 39.95 from account ending with 1234 was done by Card ending with 5678 from TIM HORTONS on 08/10/2026, your available balance is AED 326.77"))
                     .setAutoCancel(false);
 
             nm.notify(4242, builder.build());
