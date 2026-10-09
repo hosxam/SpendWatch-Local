@@ -81,7 +81,9 @@ jobs:
             adb shell uiautomator dump /sdcard/spendwatch_ui.xml
             adb pull /sdcard/spendwatch_ui.xml spendwatch_ui.xml
             grep -q "AED 39.95" spendwatch_ui.xml
-            grep -q "TIM HORTONS" spendwatch_ui.xml
+
+            adb exec-out run-as com.hossam.spendwatch cat databases/spendwatch_uae.db > spendwatch_after_first.db
+            python3 -c "import sqlite3; con=sqlite3.connect('spendwatch_after_first.db'); rows=con.execute('select amount,currency,merchant,bank_source,transaction_type from transactions').fetchall(); print(rows); assert any(abs(r[0]-39.95)<0.001 and r[1]=='AED' and r[2]=='TIM HORTONS' and r[3]=='Ruya' and r[4]=='card_purchase' for r in rows), rows"
 
             adb shell dumpsys notification --noredact > notifications_after_first.txt
             grep -q "Transaction recorded" notifications_after_first.txt
@@ -95,6 +97,9 @@ jobs:
             grep -q "AED 39.95" spendwatch_ui_after_duplicate.xml
             ! grep -q "AED 79.90" spendwatch_ui_after_duplicate.xml
 
+            adb exec-out run-as com.hossam.spendwatch cat databases/spendwatch_uae.db > spendwatch_after_duplicate.db
+            python3 -c "import sqlite3; con=sqlite3.connect('spendwatch_after_duplicate.db'); rows=con.execute(\"select amount,merchant from transactions where abs(amount-39.95)<0.001 and merchant='TIM HORTONS'\").fetchall(); print(rows); assert len(rows)==1, rows"
+
             adb exec-out screencap -p > spendwatch_home.png
 
       - name: Upload QA evidence
@@ -107,6 +112,8 @@ jobs:
             spendwatch_ui.xml
             spendwatch_ui_after_duplicate.xml
             notifications_after_first.txt
+            spendwatch_after_first.db
+            spendwatch_after_duplicate.db
             spendwatch_home.png
             SpendWatchLocal/app/build/reports/tests/testDebugUnitTest/**
             SpendWatchLocal/app/build/reports/androidTests/**
