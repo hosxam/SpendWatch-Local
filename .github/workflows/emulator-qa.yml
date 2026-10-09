@@ -80,19 +80,20 @@ jobs:
 
             adb shell uiautomator dump /sdcard/spendwatch_ui.xml
             adb pull /sdcard/spendwatch_ui.xml spendwatch_ui.xml
-            grep -q "AED 42.75" spendwatch_ui.xml
+            grep -q "AED 39.95" spendwatch_ui.xml
+            grep -q "TIM HORTONS" spendwatch_ui.xml
 
             adb shell dumpsys notification --noredact > notifications_after_first.txt
             grep -q "Transaction recorded" notifications_after_first.txt
-            grep -q "42.75" notifications_after_first.txt
+            grep -q "39.95" notifications_after_first.txt
 
             adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity
             sleep 3
 
             adb shell uiautomator dump /sdcard/spendwatch_ui_after_duplicate.xml
             adb pull /sdcard/spendwatch_ui_after_duplicate.xml spendwatch_ui_after_duplicate.xml
-            grep -q "AED 42.75" spendwatch_ui_after_duplicate.xml
-            ! grep -q "AED 85.50" spendwatch_ui_after_duplicate.xml
+            grep -q "AED 39.95" spendwatch_ui_after_duplicate.xml
+            ! grep -q "AED 79.90" spendwatch_ui_after_duplicate.xml
 
             adb exec-out screencap -p > spendwatch_home.png
 
