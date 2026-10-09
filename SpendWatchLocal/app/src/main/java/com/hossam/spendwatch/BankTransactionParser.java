@@ -17,7 +17,7 @@ public class BankTransactionParser {
             "otp", "one-time password", "one time password", "verification code",
             "security code", "passcode", "declined", "failed", "unsuccessful",
             "not authorized", "not authorised", "insufficient funds", "statement ready",
-            "available balance", "current balance", "balance enquiry", "balance inquiry",
+            "balance enquiry", "balance inquiry",
             "login", "signed in", "device registered"
     };
 
@@ -43,6 +43,13 @@ public class BankTransactionParser {
 
     private static final Pattern PATTERN_MERCHANT = Pattern.compile(
             "(?:at|@|merchant|payee|to)\\s*:?\\s*([A-Za-z0-9&'._\\-\\s/]{2,45}?)(?=\\s+(?:on|with|using|via|ending|ref|reference|avail|bal|available|card|account|approx|from|date|time|AED|USD|EUR|GBP|SAR)\\b|[,.]|$)",
+            Pattern.CASE_INSENSITIVE
+    );
+
+    // Real Ruya debit-card alerts use: "... by Card ending ... from TIM HORTONS on 08/10/2026 ..."
+    // The negative look-ahead deliberately skips the earlier "from account ending ..." segment.
+    private static final Pattern PATTERN_RUYA_FROM_MERCHANT = Pattern.compile(
+            "\\bfrom\\s+(?!account\\b)([A-Za-z0-9&'._\\-\\s/]{2,45}?)(?=\\s+on\\s+\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}\\b|\\s*,?\\s*your\\s+(?:available|current)\\s+balance\\b|[,.;]|$)",
             Pattern.CASE_INSENSITIVE
     );
 
@@ -140,6 +147,12 @@ public class BankTransactionParser {
     }
 
     private static String extractMerchant(String combined, String type) {
+        Matcher ruyaFrom = PATTERN_RUYA_FROM_MERCHANT.matcher(combined);
+        if (ruyaFrom.find()) {
+            String value = ruyaFrom.group(1).trim().replaceAll("[,.;:]+$", "");
+            if (!value.isEmpty()) return value;
+        }
+
         Matcher m = PATTERN_MERCHANT.matcher(combined);
         if (m.find()) {
             String value = m.group(1).trim().replaceAll("[,.;:]+$", "");
