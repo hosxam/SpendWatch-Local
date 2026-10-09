@@ -100,4 +100,26 @@ public class BankTransactionParserTest {
                 "Payment AED 25.00 completed.",
                 "com.example.shopping"));
     }
+    @Test
+    public void parsesRealRuyaDebitCardPurchaseWithAvailableBalance() {
+        Transaction t = BankTransactionParser.parseNotification(
+                "Ruya",
+                "Dear Customer, Debit Card Purchase of AED 39.95 from account ending with 1234 was done by Card ending with 5678 from TIM HORTONS on 08/10/2026, your available balance is AED 326.77",
+                "com.google.android.apps.messaging");
+        assertNotNull(t);
+        assertEquals(39.95, t.getAmount(), 0.001);
+        assertEquals("AED", t.getCurrency());
+        assertEquals("card_purchase", t.getTransactionType());
+        assertEquals("TIM HORTONS", t.getMerchant());
+        assertEquals("Food & Dining", t.getCategory());
+    }
+
+    @Test
+    public void pureBalanceAlertStillDoesNotBecomeTransaction() {
+        assertNull(BankTransactionParser.parseNotification(
+                "Ruya",
+                "Dear Customer, your available balance is AED 326.77",
+                "com.google.android.apps.messaging"));
+    }
+
 }
