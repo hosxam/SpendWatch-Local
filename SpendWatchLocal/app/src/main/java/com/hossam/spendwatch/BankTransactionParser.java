@@ -17,7 +17,7 @@ public class BankTransactionParser {
             "otp", "one-time password", "one time password", "verification code",
             "security code", "passcode", "declined", "failed", "unsuccessful",
             "not authorized", "not authorised", "insufficient funds", "statement ready",
-            "available balance", "current balance", "balance enquiry", "balance inquiry",
+            "balance enquiry", "balance inquiry",
             "login", "signed in", "device registered"
     };
 
@@ -38,6 +38,11 @@ public class BankTransactionParser {
 
     private static final Pattern PATTERN_AMOUNT_FIRST = Pattern.compile(
             "\\b([0-9]{1,3}(?:,[0-9]{3})+(?:\\.[0-9]{1,2})?|[0-9]+(?:\\.[0-9]{1,2})?)\\s*(AED|DHS|DH|DIRHAMS?|USD|EUR|GBP|SAR|QAR|KWD|OMR|BHD|INR|CAD|AUD)\\b",
+            Pattern.CASE_INSENSITIVE
+    );
+
+    private static final Pattern PATTERN_MERCHANT_FROM_DATE = Pattern.compile(
+            "\\bfrom\\s+([A-Za-z0-9&'._\\-\\s/]{2,45}?)\\s+on\\s+\\d{1,2}/\\d{1,2}/\\d{4}\\b",
             Pattern.CASE_INSENSITIVE
     );
 
@@ -140,6 +145,12 @@ public class BankTransactionParser {
     }
 
     private static String extractMerchant(String combined, String type) {
+        Matcher fromDate = PATTERN_MERCHANT_FROM_DATE.matcher(combined);
+        if (fromDate.find()) {
+            String value = fromDate.group(1).trim().replaceAll("[,.;:]+$", "");
+            if (!value.isEmpty() && !value.toLowerCase(Locale.ROOT).startsWith("account")) return value;
+        }
+
         Matcher m = PATTERN_MERCHANT.matcher(combined);
         if (m.find()) {
             String value = m.group(1).trim().replaceAll("[,.;:]+$", "");
