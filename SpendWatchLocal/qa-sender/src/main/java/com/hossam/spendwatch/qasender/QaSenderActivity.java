@@ -24,14 +24,20 @@ public class QaSenderActivity extends Activity {
                     ? new android.app.Notification.Builder(this, CHANNEL)
                     : new android.app.Notification.Builder(this);
 
-            String realRuyaAlert = "Dear Customer, Debit Card Purchase of AED 39.95 from account ending with 1234 "
-                    + "was done by Card ending with 5678 from TIM HORTONS on 08/10/2026, "
-                    + "your available balance is AED 326.77";
+            String scenario = getIntent() == null ? null : getIntent().getStringExtra("scenario");
+            String alert;
+            if ("real_ruya".equals(scenario)) {
+                alert = "Dear Customer, Debit Card Purchase of AED 39.95 from account ending with 1234 "
+                        + "was done by Card ending with 5678 from TIM HORTONS on 08/10/2026, "
+                        + "your available balance is AED 326.77";
+            } else {
+                alert = "Your card was used for AED 42.75 at TEST CAFE. Successful transaction.";
+            }
 
             builder.setSmallIcon(android.R.drawable.stat_notify_more)
                     .setContentTitle("Ruya")
-                    .setContentText(realRuyaAlert)
-                    .setStyle(new android.app.Notification.BigTextStyle().bigText(realRuyaAlert))
+                    .setContentText(alert)
+                    .setStyle(new android.app.Notification.BigTextStyle().bigText(alert))
                     .setAutoCancel(false);
 
             nm.notify(4242, builder.build());
