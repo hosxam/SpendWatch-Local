@@ -108,6 +108,8 @@ public class BankTransactionParserTest {
                 "com.google.android.apps.messaging");
         assertNotNull(t);
         assertEquals(39.95, t.getAmount(), 0.001);
+        assertNotEquals("The remaining balance must never become the purchase amount",
+                326.77, t.getAmount(), 0.001);
         assertEquals("AED", t.getCurrency());
         assertEquals("card_purchase", t.getTransactionType());
         assertEquals("TIM HORTONS", t.getMerchant());
