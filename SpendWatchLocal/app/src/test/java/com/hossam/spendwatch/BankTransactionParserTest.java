@@ -45,6 +45,34 @@ public class BankTransactionParserTest {
     }
 
     @Test
+    public void parsesRealRuyaDebitCardPurchaseWithBalanceSuffix() {
+        String body = "Dear Customer, Debit Card Purchase of AED 39.95 from account ending with 1234 "
+                + "was done by Card ending with 5678 from TIM HORTONS on 08/10/2026, "
+                + "your available balance is AED 326.77";
+
+        Transaction t = BankTransactionParser.parseNotification(
+                "Ruya",
+                body,
+                "com.android.messaging");
+
+        assertNotNull(t);
+        assertEquals("Ruya", t.getBankSource());
+        assertEquals(39.95, t.getAmount(), 0.001);
+        assertEquals("AED", t.getCurrency());
+        assertEquals("card_purchase", t.getTransactionType());
+        assertEquals("TIM HORTONS", t.getMerchant());
+        assertEquals("Food & Dining", t.getCategory());
+    }
+
+    @Test
+    public void balanceOnlyRuyaMessageIsNotRecordedAsPurchase() {
+        assertNull(BankTransactionParser.parseNotification(
+                "Ruya",
+                "Dear Customer, your available balance is AED 326.77",
+                "com.android.messaging"));
+    }
+
+    @Test
     public void rejectsDeclinedTransaction() {
         assertNull(BankTransactionParser.parseNotification(
                 "Ruya",

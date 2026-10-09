@@ -70,6 +70,17 @@ public class SpendWatchV4InstrumentedTest {
     public void parser_handlesRepresentativeRuyaAlerts_andRejectsBadAlerts() {
         assertParsed("Ruya", "Your card ending 1234 was used for AED 42.75 at TEST CAFE. Successful transaction.",
                 "com.ruya.bank", 42.75, "card_purchase");
+
+        Transaction realFormat = BankTransactionParser.parseNotification(
+                "Ruya",
+                "Dear Customer, Debit Card Purchase of AED 39.95 from account ending with 1234 "
+                        + "was done by Card ending with 5678 from TIM HORTONS on 08/10/2026, "
+                        + "your available balance is AED 326.77",
+                "com.android.messaging");
+        assertNotNull(realFormat);
+        assertEquals(39.95, realFormat.getAmount(), 0.001);
+        assertEquals("TIM HORTONS", realFormat.getMerchant());
+        assertEquals("Food & Dining", realFormat.getCategory());
         assertParsed("Card transaction", "AED 15.25 debited at CARREFOUR.", "com.ruya.bank",
                 15.25, "card_purchase");
         assertParsed("Ruya", "Payment of AED: 55.00 at NOON was successfully processed.", "com.ruya.bank",

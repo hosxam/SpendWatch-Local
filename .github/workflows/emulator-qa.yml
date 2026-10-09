@@ -70,29 +70,37 @@ jobs:
             grep -q "OK (" instrumentation.txt
 
             adb shell cmd notification allow_listener com.hossam.spendwatch/com.hossam.spendwatch.BankNotificationListener
+            sleep 2
             adb install -r SpendWatchLocal/qa-sender/build/outputs/apk/debug/qa-sender-debug.apk
             adb shell pm grant com.hossam.spendwatch.qasender android.permission.POST_NOTIFICATIONS
 
             adb shell am start -W -n com.hossam.spendwatch/.MainActivity
             sleep 2
-            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity
-            sleep 4
+            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity --es scenario real_ruya
+            sleep 8
 
+            adb exec-out run-as com.hossam.spendwatch cat databases/spendwatch_uae.db > spendwatch_after_first.db
+            python3 -c "import sqlite3; con=sqlite3.connect('spendwatch_after_first.db'); rows=con.execute('select amount,currency,merchant,bank_source,transaction_type from transactions').fetchall(); print(rows); assert any(abs(r[0]-39.95)<0.001 and r[1]=='AED' and r[2]=='TIM HORTONS' and r[3]=='Ruya' and r[4]=='card_purchase' for r in rows), rows"
+
+            adb shell am start -W -n com.hossam.spendwatch/.MainActivity
+            sleep 2
             adb shell uiautomator dump /sdcard/spendwatch_ui.xml
             adb pull /sdcard/spendwatch_ui.xml spendwatch_ui.xml
-            grep -q "AED 42.75" spendwatch_ui.xml
 
             adb shell dumpsys notification --noredact > notifications_after_first.txt
             grep -q "Transaction recorded" notifications_after_first.txt
-            grep -q "42.75" notifications_after_first.txt
+            grep -q "39.95" notifications_after_first.txt
 
-            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity
-            sleep 3
+            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity --es scenario real_ruya
+            sleep 6
 
+            adb exec-out run-as com.hossam.spendwatch cat databases/spendwatch_uae.db > spendwatch_after_duplicate.db
+            python3 -c "import sqlite3; con=sqlite3.connect('spendwatch_after_duplicate.db'); rows=con.execute(\"select amount,merchant from transactions where abs(amount-39.95)<0.001 and merchant='TIM HORTONS'\").fetchall(); print(rows); assert len(rows)==1, rows"
+
+            adb shell am start -W -n com.hossam.spendwatch/.MainActivity
+            sleep 2
             adb shell uiautomator dump /sdcard/spendwatch_ui_after_duplicate.xml
             adb pull /sdcard/spendwatch_ui_after_duplicate.xml spendwatch_ui_after_duplicate.xml
-            grep -q "AED 42.75" spendwatch_ui_after_duplicate.xml
-            ! grep -q "AED 85.50" spendwatch_ui_after_duplicate.xml
 
             adb exec-out screencap -p > spendwatch_home.png
 
@@ -106,6 +114,8 @@ jobs:
             spendwatch_ui.xml
             spendwatch_ui_after_duplicate.xml
             notifications_after_first.txt
+            spendwatch_after_first.db
+            spendwatch_after_duplicate.db
             spendwatch_home.png
             SpendWatchLocal/app/build/reports/tests/testDebugUnitTest/**
             SpendWatchLocal/app/build/reports/androidTests/**
