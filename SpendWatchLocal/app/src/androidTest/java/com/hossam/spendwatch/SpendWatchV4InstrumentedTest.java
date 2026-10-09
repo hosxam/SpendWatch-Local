@@ -84,6 +84,9 @@ public class SpendWatchV4InstrumentedTest {
                 20.00, "refund");
         assertParsed("Ruya", "Salary AED 5000.00 credited to your account", "com.ruya.bank",
                 5000.00, "income");
+        assertParsed("Ruya",
+                "Dear Customer, Debit Card Purchase of AED 39.95 from account ending with 1234 was done by Card ending with 5678 from TIM HORTONS on 08/10/2026, your available balance is AED 326.77",
+                "com.google.android.apps.messaging", 39.95, "card_purchase");
 
         assertNull(BankTransactionParser.parseNotification(
                 "Ruya", "Purchase AED 10.00 declined due to insufficient funds", "com.ruya.bank"));
