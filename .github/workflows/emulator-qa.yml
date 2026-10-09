@@ -89,7 +89,7 @@ jobs:
             grep -q "Transaction recorded" notifications_after_first.txt
             grep -q "39.95" notifications_after_first.txt
 
-            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity
+            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity --es scenario real_ruya
             sleep 3
 
             adb shell uiautomator dump /sdcard/spendwatch_ui_after_duplicate.xml
