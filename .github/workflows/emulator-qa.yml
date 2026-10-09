@@ -75,7 +75,7 @@ jobs:
 
             adb shell am start -W -n com.hossam.spendwatch/.MainActivity
             sleep 2
-            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity
+            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity --es scenario real_ruya
             sleep 4
 
             adb shell uiautomator dump /sdcard/spendwatch_ui.xml
