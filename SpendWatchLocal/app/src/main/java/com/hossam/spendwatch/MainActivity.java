@@ -732,11 +732,18 @@ public class MainActivity extends Activity {
         content.addView(settingRow("Add manual transaction", "Expense, income, transfer or refund", UiKit.CYAN, this::showManualTransactionDialog));
 
         content.addView(UiKit.gap(this, 18));
+        sectionRow("LEARNING", "", () -> {});
+        content.addView(settingRow("Remembered merchants",
+                database.getLearnedMerchantCount() + " personal categorization rules",
+                UiKit.GREEN, this::confirmForgetLearnedMerchants));
+        content.addView(UiKit.gap(this, 8));
+
         sectionRow("DATA", "", () -> {});
-        content.addView(settingRow("Clear transaction history", "Budgets and settings stay intact", UiKit.RED, this::confirmClearTransactions));
+        content.addView(settingRow("Clear transaction history", "Merchant preferences and budgets stay intact",
+                UiKit.RED, this::confirmClearTransactions));
 
         content.addView(UiKit.gap(this, 20));
-        TextView version = UiKit.text(this, "SpendWatch Local 4.0  •  UAE-first  •  offline", 11, UiKit.MUTED, false);
+        TextView version = UiKit.text(this, "SpendWatch Local 4.2  •  UAE-first  •  offline", 11, UiKit.MUTED, false);
         version.setGravity(Gravity.CENTER);
         content.addView(version);
     }
@@ -897,18 +904,48 @@ public class MainActivity extends Activity {
         ignored.setChecked(t.isIgnored());
         form.addView(ignored);
 
+        CheckBox learn = new CheckBox(this);
+        learn.setText("Remember this merchant for future purchases");
+        learn.setTextColor(UiKit.CYAN);
+        learn.setChecked(true);
+        form.addView(learn);
+
+        TextView learningInfo = UiKit.text(this,
+                "SpendWatch will use this category next time the same bank reports this merchant. "
+                        + "The preference stays on this phone.",
+                11, UiKit.MUTED, false);
+        form.addView(learningInfo);
+
         new AlertDialog.Builder(this)
                 .setTitle("Edit transaction")
                 .setView(form)
                 .setPositiveButton("Save", (d, w) -> {
-                    database.updateTransaction(t.getId(),
+                    boolean saved = database.updateTransactionAndLearn(t.getId(),
                             categories.get(category.getSelectedItemPosition()),
                             types[type.getSelectedItemPosition()],
-                            ignored.isChecked());
+                            ignored.isChecked(),
+                            learn.isChecked());
+                    if (saved && learn.isChecked()) {
+                        Toast.makeText(this, "Saved. Merchant preference remembered when eligible.",
+                                Toast.LENGTH_SHORT).show();
+                    }
                     renderCurrent();
                 })
                 .setNeutralButton("Delete", (d, w) -> {
                     database.deleteTransaction(t.getId());
+                    renderCurrent();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void confirmForgetLearnedMerchants() {
+        new AlertDialog.Builder(this)
+                .setTitle("Forget remembered merchants?")
+                .setMessage("This clears personalized category rules without deleting transactions or budgets. "
+                        + "Future purchases will fall back to the built-in merchant categories.")
+                .setPositiveButton("Forget", (d, w) -> {
+                    database.forgetLearnedMerchants();
                     renderCurrent();
                 })
                 .setNegativeButton("Cancel", null)
