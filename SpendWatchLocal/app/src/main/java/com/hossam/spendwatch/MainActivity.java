@@ -447,6 +447,235 @@ public class MainActivity extends Activity {
         return card;
     }
 
+    private void addSavingsGoalsPreview() {
+        List<SavingsGoal> goals = database.getSavingsGoals();
+        if (goals.isEmpty()) {
+            LinearLayout empty = UiKit.card(this, 18);
+            empty.addView(UiKit.text(this, "Save for something that matters.", 16, UiKit.TEXT, true));
+            empty.addView(UiKit.gap(this, 8));
+            empty.addView(UiKit.text(this,
+                    "Savings are goals, not spending budgets. Set a target and watch your progress grow.",
+                    12, UiKit.MUTED, false));
+            empty.addView(UiKit.gap(this, 12));
+            TextView create = UiKit.pill(this, "＋ CREATE A SAVINGS GOAL", UiKit.PURPLE);
+            create.setOnClickListener(v -> showGoalEditor(null));
+            empty.addView(create);
+            content.addView(empty);
+            return;
+        }
+        int count = 0;
+        for (SavingsGoal goal : goals) {
+            if (count++ >= 2) break;
+            content.addView(goalCard(goal, true));
+            content.addView(UiKit.gap(this, 9));
+        }
+    }
+
+    private void renderGoals() {
+        addHeader("BUILD YOUR FUTURE", "Savings goals",
+                "Targets you save towards, separate from the budgets you spend from.");
+
+        List<SavingsGoal> goals = database.getSavingsGoals();
+        double saved = database.getTotalSavedForGoals();
+        double target = 0;
+        for (SavingsGoal g : goals) target += g.getTargetAmount();
+
+        LinearLayout summary = UiKit.card(this, 20);
+        summary.setBackground(UiKit.gradient(this, 26,
+                Color.rgb(27, 37, 72), Color.rgb(33, 22, 62), Color.rgb(15, 33, 47)));
+        TextView subtitle = UiKit.label(this, "TOTAL SAVINGS TRACKED");
+        subtitle.setTextColor(UiKit.CYAN);
+        summary.addView(subtitle);
+        TextView savedText = UiKit.text(this, money(saved), 30, UiKit.TEXT, true);
+        savedText.setPadding(0, UiKit.dp(this, 10), 0, UiKit.dp(this, 5));
+        summary.addView(savedText);
+        summary.addView(UiKit.text(this,
+                "Across " + goals.size() + (goals.size() == 1 ? " goal" : " goals")
+                        + " • target " + money(target),
+                12, UiKit.MUTED, false));
+        content.addView(summary);
+        content.addView(UiKit.gap(this, 15));
+
+        TextView create = UiKit.pill(this, "＋  NEW SAVINGS GOAL", UiKit.PURPLE);
+        create.setOnClickListener(v -> showGoalEditor(null));
+        content.addView(create);
+        content.addView(UiKit.gap(this, 14));
+
+        TextView notice = UiKit.text(this,
+                "Goal amounts are tracked manually. Recording a contribution does not transfer money, "
+                        + "deduct a transaction, or change your actual bank balance.",
+                11, UiKit.MUTED, false);
+        content.addView(notice);
+        content.addView(UiKit.gap(this, 18));
+
+        if (goals.isEmpty()) {
+            LinearLayout empty = UiKit.card(this, 20);
+            empty.addView(UiKit.text(this, "No goals created yet", 18, UiKit.TEXT, true));
+            empty.addView(UiKit.gap(this, 7));
+            empty.addView(UiKit.text(this,
+                    "Start with an emergency fund, a holiday, a new laptop or a future purchase.",
+                    13, UiKit.MUTED, false));
+            content.addView(empty);
+        } else {
+            for (SavingsGoal goal : goals) {
+                content.addView(goalCard(goal, false));
+                content.addView(UiKit.gap(this, 12));
+            }
+        }
+    }
+
+    private LinearLayout goalCard(SavingsGoal goal, boolean compact) {
+        int color = goal.getSavedAmount() >= goal.getTargetAmount() ? UiKit.GREEN : UiKit.PURPLE;
+        LinearLayout card = UiKit.card(this, 18);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+
+        DonutProgressView donut = new DonutProgressView(this);
+        donut.configure(goal.getSavedAmount(), goal.getTargetAmount(), "SAVED", color);
+        donut.setContentDescription(goal.getName() + ": " + donut.getDisplayedPercent()
+                + " percent of savings goal achieved");
+        row.addView(donut, new LinearLayout.LayoutParams(UiKit.dp(this, 108), UiKit.dp(this, 108)));
+
+        LinearLayout info = new LinearLayout(this);
+        info.setOrientation(LinearLayout.VERTICAL);
+        info.setPadding(UiKit.dp(this, 14), 0, 0, 0);
+        info.addView(UiKit.text(this, "✦  " + goal.getName(), 16, UiKit.TEXT, true));
+        info.addView(UiKit.gap(this, 8));
+        info.addView(UiKit.text(this, money(goal.getSavedAmount()) + " saved",
+                13, color, true));
+        info.addView(UiKit.gap(this, 4));
+        info.addView(UiKit.text(this, "Goal: " + money(goal.getTargetAmount()),
+                12, UiKit.MUTED, false));
+        info.addView(UiKit.gap(this, 4));
+        info.addView(UiKit.text(this,
+                goal.getRemaining() == 0 ? "Goal reached!" : money(goal.getRemaining()) + " to go",
+                12, goal.getRemaining() == 0 ? UiKit.GREEN : UiKit.MUTED, false));
+        row.addView(info, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        card.addView(row);
+
+        card.addView(UiKit.gap(this, 12));
+        LinearLayout buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.HORIZONTAL);
+        buttons.setGravity(Gravity.CENTER_VERTICAL);
+        TextView add = UiKit.pill(this, "＋ ADD SAVINGS", UiKit.GREEN);
+        add.setOnClickListener(v -> showGoalContribution(goal, false));
+        buttons.addView(add);
+        TextView withdraw = UiKit.pill(this, "− TAKE OUT", UiKit.AMBER);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(UiKit.dp(this, 8), 0, 0, 0);
+        withdraw.setLayoutParams(lp);
+        withdraw.setOnClickListener(v -> showGoalContribution(goal, true));
+        buttons.addView(withdraw);
+        if (!compact) {
+            TextView edit = UiKit.pill(this, "EDIT", UiKit.CYAN);
+            LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            ep.setMargins(UiKit.dp(this, 8), 0, 0, 0);
+            edit.setLayoutParams(ep);
+            edit.setOnClickListener(v -> showGoalEditor(goal));
+            buttons.addView(edit);
+        } else {
+            card.setOnClickListener(v -> { currentTab = 2; renderBottomNav(); renderCurrent(); });
+        }
+        card.addView(buttons);
+        return card;
+    }
+
+    private void showGoalEditor(SavingsGoal current) {
+        LinearLayout form = dialogForm();
+        EditText name = darkInput("Goal name, e.g. Emergency savings");
+        if (current != null) name.setText(current.getName());
+        form.addView(name);
+        EditText target = darkInput("Target amount in AED");
+        target.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        if (current != null) target.setText(
+                String.format(Locale.US, "%.2f", current.getTargetAmount()));
+        form.addView(target);
+
+        EditText initial = null;
+        if (current == null) {
+            initial = darkInput("Already saved in AED (optional)");
+            initial.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+            form.addView(initial);
+        }
+        final EditText savedInput = initial;
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle(current == null ? "New savings goal" : "Edit savings goal")
+                .setView(form)
+                .setPositiveButton("Save", null)
+                .setNegativeButton("Cancel", null);
+        if (current != null) {
+            builder.setNeutralButton("Delete", (d, which) ->
+                    new AlertDialog.Builder(this)
+                            .setTitle("Delete " + current.getName() + "?")
+                            .setMessage("Only the goal tracker is deleted. No bank transactions are changed.")
+                            .setPositiveButton("Delete", (dd, w) -> {
+                                database.deleteSavingsGoal(current.getId());
+                                renderCurrent();
+                            })
+                            .setNegativeButton("Cancel", null)
+                            .show());
+        }
+
+        AlertDialog dialog = builder.create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                .setOnClickListener(v -> {
+                    try {
+                        double targetValue = Double.parseDouble(target.getText().toString().trim());
+                        double initialValue = 0;
+                        if (savedInput != null && !savedInput.getText().toString().trim().isEmpty())
+                            initialValue = Double.parseDouble(savedInput.getText().toString().trim());
+                        String title = name.getText().toString().trim();
+                        if (title.isEmpty() || !Double.isFinite(targetValue) || targetValue <= 0
+                                || !Double.isFinite(initialValue) || initialValue < 0)
+                            throw new IllegalArgumentException();
+                        long id = database.saveSavingsGoal(
+                                current == null ? 0 : current.getId(), title, targetValue);
+                        if (id <= 0) throw new IllegalArgumentException();
+                        if (initialValue > 0 && !database.changeSavingsGoalBalance(id, initialValue))
+                            throw new IllegalArgumentException();
+                        dialog.dismiss();
+                        renderCurrent();
+                    } catch (Exception e) {
+                        Toast.makeText(this, "Enter a goal name and valid AED amounts.",
+                                Toast.LENGTH_LONG).show();
+                    }
+                }));
+        dialog.show();
+    }
+
+    private void showGoalContribution(SavingsGoal goal, boolean withdrawal) {
+        LinearLayout form = dialogForm();
+        EditText input = darkInput(withdrawal ? "Amount to take out (AED)" : "Amount to add (AED)");
+        input.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        form.addView(input);
+        new AlertDialog.Builder(this)
+                .setTitle((withdrawal ? "Take savings from " : "Add savings to ") + goal.getName())
+                .setMessage("This updates the goal tracker only, not the bank account.")
+                .setView(form)
+                .setPositiveButton(withdrawal ? "Take out" : "Add savings", (d, w) -> {
+                    try {
+                        double value = Double.parseDouble(input.getText().toString().trim());
+                        if (!Double.isFinite(value) || value <= 0) throw new IllegalArgumentException();
+                        if (!database.changeSavingsGoalBalance(
+                                goal.getId(), withdrawal ? -value : value)) {
+                            Toast.makeText(this, "Not enough tracked savings, or invalid amount.",
+                                    Toast.LENGTH_LONG).show();
+                            return;
+                        }
+                        renderCurrent();
+                    } catch (Exception e) {
+                        Toast.makeText(this, "Enter a valid positive AED amount.",
+                                Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
     private void addRecentTransactions(int max) {
         List<Transaction> txs = database.getAllTransactions();
         if (txs.isEmpty()) {
