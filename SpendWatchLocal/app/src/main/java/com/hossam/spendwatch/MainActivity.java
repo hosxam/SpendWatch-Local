@@ -429,7 +429,10 @@ public class MainActivity extends Activity {
         details.addView(UiKit.text(this, categoryGlyph(b.getName()) + "  " + b.getName(),
                 15, UiKit.TEXT, true));
         details.addView(UiKit.gap(this, 8));
-        details.addView(UiKit.text(this, money(spent) + " spent of " + money(total),
+        int usedPercent = total > 0 ? (int) Math.round(spent / total * 100) : 0;
+        details.addView(UiKit.text(this,
+                total > 0 ? usedPercent + "% SPENT  •  " + money(spent) + " of " + money(total)
+                        : "No monthly limit set",
                 12, UiKit.MUTED, false));
         details.addView(UiKit.gap(this, 6));
         TextView remainingText = UiKit.text(this,
