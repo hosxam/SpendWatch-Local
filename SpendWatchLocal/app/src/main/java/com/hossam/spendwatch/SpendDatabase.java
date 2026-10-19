@@ -98,8 +98,10 @@ public class SpendDatabase extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        // Only adds new structures; existing users retain transactions and budgets.
         createTransactionsTable(db);
         createV2Tables(db);
+        createMerchantRulesTable(db);
         seedDefaultBudgets(db);
     }
 
