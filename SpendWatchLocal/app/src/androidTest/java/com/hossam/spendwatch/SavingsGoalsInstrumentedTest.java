@@ -113,6 +113,17 @@ public class SavingsGoalsInstrumentedTest {
         if (error.get() != null) throw new AssertionError(error.get());
     }
 
+    @Test public void upgradingAnExistingV5DatabaseCreatesGoalsTable() {
+        int transactionCount = db.getAllTransactions().size();
+        // Simulate a device upgraded from v4.2: it has no goals table yet.
+        db.getWritableDatabase().execSQL("DROP TABLE IF EXISTS savings_goals");
+        db.onUpgrade(db.getWritableDatabase(), 5, 6);
+        assertEquals(transactionCount, db.getAllTransactions().size());
+        long id = db.saveSavingsGoal(0L, "After-upgrade savings", 200);
+        assertTrue(id > 0);
+        assertEquals(1, db.getSavingsGoals().size());
+    }
+
     @Test public void migrationFromV5PreservesSavedGoalsAndExistingRecords() {
         long id = db.saveSavingsGoal(0L, "Emergency", 300);
         assertTrue(db.changeSavingsGoalBalance(id, 80));
