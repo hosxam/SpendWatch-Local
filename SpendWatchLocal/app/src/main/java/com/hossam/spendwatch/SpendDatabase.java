@@ -104,6 +104,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
         createTransactionsTable(db);
         createV2Tables(db);
         createMerchantRulesTable(db);
+        createSavingsGoalsTable(db);
         seedDefaultBudgets(db);
     }
 
