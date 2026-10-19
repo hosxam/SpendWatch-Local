@@ -51,8 +51,8 @@ public class MainActivity extends Activity {
     private int currentTab = 0;
     private boolean receiverRegistered = false;
 
-    private final String[] NAV_LABELS = {"Home", "Budgets", "Activity", "Insights", "Settings"};
-    private final String[] NAV_ICONS = {"⌂", "◫", "⇅", "↗", "⚙"};
+    private final String[] NAV_LABELS = {"Home", "Budgets", "Goals", "Activity", "Insights", "Settings"};
+    private final String[] NAV_ICONS = {"⌂", "◫", "◎", "⇅", "↗", "⚙"};
 
     private final BroadcastReceiver transactionReceiver = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
@@ -176,9 +176,10 @@ public class MainActivity extends Activity {
         content.removeAllViews();
         switch (currentTab) {
             case 1: renderBudgets(); break;
-            case 2: renderTransactions(); break;
-            case 3: renderInsights(); break;
-            case 4: renderSettings(); break;
+            case 2: renderGoals(); break;
+            case 3: renderTransactions(); break;
+            case 4: renderInsights(); break;
+            case 5: renderSettings(); break;
             default: renderHome(); break;
         }
     }
@@ -310,7 +311,7 @@ public class MainActivity extends Activity {
         content.addView(stats2);
 
         content.addView(UiKit.gap(this, 20));
-        sectionRow("LOCAL INTELLIGENCE", "INSIGHTS", () -> { currentTab = 3; renderBottomNav(); renderCurrent(); });
+        sectionRow("LOCAL INTELLIGENCE", "INSIGHTS", () -> { currentTab = 4; renderBottomNav(); renderCurrent(); });
 
         LinearLayout insight = UiKit.card(this, 18);
         LinearLayout insightTop = new LinearLayout(this);
@@ -328,7 +329,11 @@ public class MainActivity extends Activity {
         addBudgetPreview();
 
         content.addView(UiKit.gap(this, 20));
-        sectionRow("RECENT ACTIVITY", "SEE ALL", () -> { currentTab = 2; renderBottomNav(); renderCurrent(); });
+        sectionRow("SAVINGS GOALS", "SEE GOALS", () -> { currentTab = 2; renderBottomNav(); renderCurrent(); });
+        addSavingsGoalsPreview();
+
+        content.addView(UiKit.gap(this, 20));
+        sectionRow("RECENT ACTIVITY", "SEE ALL", () -> { currentTab = 3; renderBottomNav(); renderCurrent(); });
         addRecentTransactions(5);
     }
 
@@ -403,31 +408,41 @@ public class MainActivity extends Activity {
         double spent = database.getSpentForCategoryThisMonth(b.getName());
         double total = b.getEffectiveAmount();
         double remaining = total - spent;
-        double ratio = total > 0 ? spent / total : 0;
-        int accent = remaining < 0 ? UiKit.RED : ratio > 0.8 ? UiKit.AMBER : UiKit.GREEN;
+        double percentLeft = total > 0 ? (remaining / total) : 0;
+        int accent = remaining < 0 ? UiKit.RED :
+                percentLeft <= 0.20 ? UiKit.AMBER : UiKit.GREEN;
 
-        LinearLayout card = UiKit.card(this, 16);
-        LinearLayout top = new LinearLayout(this);
-        top.setOrientation(LinearLayout.HORIZONTAL);
-        top.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout card = UiKit.card(this, 18);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
 
-        TextView name = UiKit.text(this, categoryGlyph(b.getName()) + "  " + b.getName(), 14, UiKit.TEXT, true);
-        top.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        if (b.isSinkingFund()) top.addView(UiKit.pill(this, "SINKING", UiKit.PURPLE));
-        else if (b.isRolloverEnabled()) top.addView(UiKit.pill(this, "ROLLOVER", UiKit.CYAN));
-        card.addView(top);
+        DonutProgressView donut = new DonutProgressView(this);
+        donut.configure(Math.max(0, remaining), total, "LEFT", accent);
+        donut.setContentDescription(b.getName() + ": " + donut.getDisplayedPercent()
+                + " percent remaining");
+        row.addView(donut, new LinearLayout.LayoutParams(UiKit.dp(this, 108), UiKit.dp(this, 108)));
 
-        LinearLayout nums = new LinearLayout(this);
-        nums.setOrientation(LinearLayout.HORIZONTAL);
-        nums.setGravity(Gravity.CENTER_VERTICAL);
-        nums.setPadding(0, UiKit.dp(this, 10), 0, UiKit.dp(this, 8));
-        TextView spentTv = UiKit.text(this, money(spent) + " spent", 12, UiKit.MUTED, false);
-        nums.addView(spentTv, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        TextView remTv = UiKit.text(this, money(remaining) + " left", 12, accent, true);
-        nums.addView(remTv);
-        card.addView(nums);
-
-        card.addView(UiKit.progress(this, total > 0 ? (int)(Math.min(1.0, ratio) * 1000) : 0, accent));
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+        details.setPadding(UiKit.dp(this, 14), 0, 0, 0);
+        details.addView(UiKit.text(this, categoryGlyph(b.getName()) + "  " + b.getName(),
+                15, UiKit.TEXT, true));
+        details.addView(UiKit.gap(this, 8));
+        details.addView(UiKit.text(this, money(spent) + " spent of " + money(total),
+                12, UiKit.MUTED, false));
+        details.addView(UiKit.gap(this, 6));
+        TextView remainingText = UiKit.text(this,
+                remaining < 0 ? money(-remaining) + " over budget" :
+                        money(remaining) + " remaining",
+                12, accent, true);
+        details.addView(remainingText);
+        details.addView(UiKit.gap(this, 9));
+        if (b.isSinkingFund()) details.addView(UiKit.pill(this, "MONTHLY SINKING FUND", UiKit.PURPLE));
+        else if (b.isRolloverEnabled()) details.addView(UiKit.pill(this, "ROLLOVER", UiKit.CYAN));
+        row.addView(details, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        card.addView(row);
         card.setOnClickListener(v -> startActivity(new Intent(this, BudgetActivity.class)));
         return card;
     }
