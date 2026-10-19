@@ -14,7 +14,7 @@ import java.util.Locale;
 public class SpendDatabase extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "spendwatch_uae.db";
-    private static final int DATABASE_VERSION = 5;
+    private static final int DATABASE_VERSION = 6;
 
     public static final String TABLE_TRANSACTIONS = "transactions";
     public static final String COLUMN_ID = "id";
@@ -31,6 +31,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
     private static final String TABLE_BUDGETS = "budgets";
     private static final String TABLE_RECURRING = "recurring_bills";
     private static final String TABLE_SETTINGS = "settings";
+    private static final String TABLE_SAVINGS_GOALS = "savings_goals";
     // Explicit user corrections only, separate from automatically guessed categories.
     private static final String TABLE_MERCHANT_RULES = "merchant_category_rules";
 
@@ -52,6 +53,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
         createTransactionsTable(db);
         createV2Tables(db);
         createMerchantRulesTable(db);
+        createSavingsGoalsTable(db);
         seedDefaultBudgets(db);
     }
 
@@ -102,7 +104,98 @@ public class SpendDatabase extends SQLiteOpenHelper {
         createTransactionsTable(db);
         createV2Tables(db);
         createMerchantRulesTable(db);
+        createSavingsGoalsTable(db);
         seedDefaultBudgets(db);
+    }
+
+    private void createSavingsGoalsTable(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_SAVINGS_GOALS + " ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "name TEXT NOT NULL, "
+                + "target_amount REAL NOT NULL, "
+                + "saved_amount REAL NOT NULL DEFAULT 0"
+                + ");");
+    }
+
+    /**
+     * Dedicated goal savings are an allocation tracker, not a bank transfer.
+     * Goals never insert spending transactions or silently alter bank balance.
+     */
+    public synchronized List<SavingsGoal> getSavingsGoals() {
+        List<SavingsGoal> goals = new ArrayList<>();
+        Cursor cursor = getReadableDatabase().query(TABLE_SAVINGS_GOALS,
+                new String[]{"id", "name", "target_amount", "saved_amount"},
+                null, null, null, null, "id DESC");
+        try {
+            while (cursor.moveToNext()) {
+                goals.add(new SavingsGoal(
+                        cursor.getLong(0),
+                        cursor.getString(1),
+                        cursor.getDouble(2),
+                        cursor.getDouble(3)));
+            }
+        } finally {
+            cursor.close();
+        }
+        return goals;
+    }
+
+    public synchronized long saveSavingsGoal(long id, String name, double target) {
+        if (name == null || name.trim().isEmpty()
+                || !Double.isFinite(target) || target <= 0) return -1;
+        String cleanName = name.trim();
+        ContentValues values = new ContentValues();
+        values.put("name", cleanName);
+        values.put("target_amount", target);
+        SQLiteDatabase db = getWritableDatabase();
+        if (id > 0) {
+            int updated = db.update(TABLE_SAVINGS_GOALS, values, "id=?",
+                    new String[]{Long.toString(id)});
+            return updated > 0 ? id : -1;
+        }
+        values.put("saved_amount", 0d);
+        return db.insert(TABLE_SAVINGS_GOALS, null, values);
+    }
+
+    public synchronized boolean changeSavingsGoalBalance(long id, double difference) {
+        if (id <= 0 || !Double.isFinite(difference) || difference == 0) return false;
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            Cursor cursor = db.query(TABLE_SAVINGS_GOALS,
+                    new String[]{"saved_amount"}, "id=?",
+                    new String[]{Long.toString(id)}, null, null, null);
+            double previous;
+            try {
+                if (!cursor.moveToFirst()) return false;
+                previous = cursor.getDouble(0);
+            } finally {
+                cursor.close();
+            }
+            double next = previous + difference;
+            if (!Double.isFinite(next) || next < -0.00001) return false;
+            ContentValues values = new ContentValues();
+            values.put("saved_amount", Math.max(0d, next));
+            if (db.update(TABLE_SAVINGS_GOALS, values, "id=?",
+                    new String[]{Long.toString(id)}) != 1) return false;
+            db.setTransactionSuccessful();
+            return true;
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    public synchronized boolean deleteSavingsGoal(long id) {
+        return getWritableDatabase().delete(TABLE_SAVINGS_GOALS, "id=?",
+                new String[]{Long.toString(id)}) == 1;
+    }
+
+    public synchronized double getTotalSavedForGoals() {
+        Cursor cursor = getReadableDatabase().rawQuery(
+                "SELECT COALESCE(SUM(saved_amount), 0) FROM " + TABLE_SAVINGS_GOALS,
+                null);
+        try { return cursor.moveToFirst() ? cursor.getDouble(0) : 0d; }
+        finally { cursor.close(); }
     }
 
     private void createMerchantRulesTable(SQLiteDatabase db) {
