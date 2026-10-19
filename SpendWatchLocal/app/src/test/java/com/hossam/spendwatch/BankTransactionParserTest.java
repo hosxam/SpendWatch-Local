@@ -73,6 +73,20 @@ public class BankTransactionParserTest {
     }
 
     @Test
+    public void recognizesHospitalCanteenAsDiningNotHealthcare() {
+        Transaction t = BankTransactionParser.parseNotification(
+                "Ruya",
+                "Dear Customer, Debit Card Purchase of AED 21.50 from account ending with 1234 "
+                        + "was done by Card ending with 5678 from NMC HOSPITAL CANTEEN on 18/10/2026, "
+                        + "your available balance is AED 250.20",
+                "com.android.messaging");
+        assertNotNull(t);
+        assertEquals("NMC HOSPITAL CANTEEN", t.getMerchant());
+        assertEquals(21.50, t.getAmount(), 0.001);
+        assertEquals("Food & Dining", t.getCategory());
+    }
+
+    @Test
     public void rejectsDeclinedTransaction() {
         assertNull(BankTransactionParser.parseNotification(
                 "Ruya",

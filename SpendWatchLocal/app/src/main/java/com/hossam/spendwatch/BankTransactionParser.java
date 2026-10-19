@@ -212,7 +212,7 @@ public class BankTransactionParser {
     private static String categorizeMerchant(String merchant, String message) {
         String c = (merchant + " " + message).toLowerCase(Locale.ROOT);
         if (containsAny(c, "carrefour", "spinneys", "lulu", "choithrams", "waitrose", "union coop")) return "Groceries";
-        if (containsAny(c, "starbucks", "tim hortons", "talabat", "deliveroo", "cafe", "restaurant", "subway", "mcdonald")) return "Food & Dining";
+        if (containsAny(c, "starbucks", "tim hortons", "talabat", "deliveroo", "cafe", "canteen", "cafeteria", "coffee", "restaurant", "subway", "mcdonald")) return "Food & Dining";
         if (containsAny(c, "enoc", "adnoc", "emarat", "fuel", "petrol", "salik", "careem", "uber", "rta")) return "Transport & Fuel";
         if (containsAny(c, "dewa", "sewa", "etisalat", "e&", "du telecom")) return "Utilities & Telecom";
         if (containsAny(c, "amazon", "noon", "virgin", "ikea", "zara", "centrepoint")) return "Shopping";

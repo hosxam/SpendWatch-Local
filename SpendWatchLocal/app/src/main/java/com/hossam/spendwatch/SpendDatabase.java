@@ -14,7 +14,7 @@ import java.util.Locale;
 public class SpendDatabase extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "spendwatch_uae.db";
-    private static final int DATABASE_VERSION = 4;
+    private static final int DATABASE_VERSION = 5;
 
     public static final String TABLE_TRANSACTIONS = "transactions";
     public static final String COLUMN_ID = "id";
@@ -31,6 +31,8 @@ public class SpendDatabase extends SQLiteOpenHelper {
     private static final String TABLE_BUDGETS = "budgets";
     private static final String TABLE_RECURRING = "recurring_bills";
     private static final String TABLE_SETTINGS = "settings";
+    // Explicit user corrections only, separate from automatically guessed categories.
+    private static final String TABLE_MERCHANT_RULES = "merchant_category_rules";
 
     private static SpendDatabase instance;
 
@@ -49,6 +51,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
     public void onCreate(SQLiteDatabase db) {
         createTransactionsTable(db);
         createV2Tables(db);
+        createMerchantRulesTable(db);
         seedDefaultBudgets(db);
     }
 
@@ -95,9 +98,119 @@ public class SpendDatabase extends SQLiteOpenHelper {
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        // Only adds new structures; existing users retain transactions and budgets.
         createTransactionsTable(db);
         createV2Tables(db);
+        createMerchantRulesTable(db);
         seedDefaultBudgets(db);
+    }
+
+    private void createMerchantRulesTable(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_MERCHANT_RULES + " ("
+                + "bank_key TEXT NOT NULL, "
+                + "merchant_key TEXT NOT NULL, "
+                + "category TEXT NOT NULL, "
+                + "PRIMARY KEY (bank_key, merchant_key)"
+                + ");");
+    }
+
+    private static String normalizeKey(String value) {
+        if (value == null) return "";
+        return value.toLowerCase(Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}]+", " ")
+                .trim().replaceAll("\\s+", " ");
+    }
+
+    private static boolean isSpecificMerchant(String merchant) {
+        String key = normalizeKey(merchant);
+        return key.length() >= 3 && !key.equals("unknown merchant")
+                && !key.equals("manual entry")
+                && !key.equals("transfer")
+                && !key.equals("incoming funds")
+                && !key.equals("refund")
+                && !key.equals("atm cash withdrawal")
+                && !key.equals("merchant");
+    }
+
+    private static boolean isSpendingType(String type) {
+        return "card_purchase".equals(type) || "pos".equals(type)
+                || "online".equals(type) || "atm".equals(type)
+                || "direct_debit".equals(type) || "fee".equals(type)
+                || "other_expense".equals(type);
+    }
+
+    private static boolean canLearnCategory(String category) {
+        return category != null && !category.trim().isEmpty()
+                && !category.equalsIgnoreCase("Income")
+                && !category.equalsIgnoreCase("Refunds")
+                && !category.equalsIgnoreCase("Transfers");
+    }
+
+    public synchronized String getLearnedCategory(String bank, String merchant) {
+        if (!isSpecificMerchant(merchant)) return null;
+        String bankKey = normalizeKey(bank);
+        if (bankKey.isEmpty()) return null;
+        Cursor cursor = getReadableDatabase().query(
+                TABLE_MERCHANT_RULES, new String[]{"category"},
+                "bank_key=? AND merchant_key=?",
+                new String[]{bankKey, normalizeKey(merchant)},
+                null, null, null);
+        try {
+            return cursor.moveToFirst() ? cursor.getString(0) : null;
+        } finally {
+            cursor.close();
+        }
+    }
+
+    public synchronized int getLearnedMerchantCount() {
+        Cursor c = getReadableDatabase().rawQuery(
+                "SELECT COUNT(*) FROM " + TABLE_MERCHANT_RULES, null);
+        try { return c.moveToFirst() ? c.getInt(0) : 0; }
+        finally { c.close(); }
+    }
+
+    public synchronized void forgetLearnedMerchants() {
+        getWritableDatabase().delete(TABLE_MERCHANT_RULES, null, null);
+    }
+
+    private void rememberMerchant(String bank, String merchant, String category) {
+        if (!isSpecificMerchant(merchant) || !canLearnCategory(category)) return;
+        String bankKey = normalizeKey(bank);
+        if (bankKey.isEmpty()) return;
+        ContentValues values = new ContentValues();
+        values.put("bank_key", bankKey);
+        values.put("merchant_key", normalizeKey(merchant));
+        values.put("category", category);
+        getWritableDatabase().insertWithOnConflict(
+                TABLE_MERCHANT_RULES, null, values, SQLiteDatabase.CONFLICT_REPLACE);
+    }
+
+    /**
+     * Learns from deliberate edits, not from automatically guessed categories.
+     * Existing transactions are left unchanged. Future captures at the same
+     * normalized merchant and bank use the correction, regardless of amount.
+     */
+    public synchronized boolean updateTransactionAndLearn(
+            long id, String category, String type, boolean ignored, boolean remember) {
+        Cursor cursor = getReadableDatabase().query(
+                TABLE_TRANSACTIONS, new String[]{COLUMN_BANK_SOURCE, COLUMN_MERCHANT},
+                COLUMN_ID + "=?", new String[]{String.valueOf(id)},
+                null, null, null);
+        String bank;
+        String merchant;
+        try {
+            if (!cursor.moveToFirst()) return false;
+            bank = cursor.getString(0);
+            merchant = cursor.getString(1);
+        } finally {
+            cursor.close();
+        }
+
+        if (!updateTransaction(id, category, type, ignored)) return false;
+        if (remember && !ignored && isSpendingType(type)) {
+            rememberMerchant(bank, merchant, category);
+        }
+        return true;
     }
 
     private void seedDefaultBudgets(SQLiteDatabase db) {
@@ -139,6 +252,15 @@ public class SpendDatabase extends SQLiteOpenHelper {
 
     public synchronized long insertTransaction(Transaction transaction) {
         if (isDuplicate(transaction)) return -1L;
+
+        // User-taught merchant rules take precedence over the built-in
+        // keyword-based category guesses, but never change income/transfers/refunds.
+        if (isSpendingType(transaction.getTransactionType())) {
+            String learnedCategory = getLearnedCategory(
+                    transaction.getBankSource(), transaction.getMerchant());
+            if (learnedCategory != null) transaction.setCategory(learnedCategory);
+        }
+
         SQLiteDatabase db = getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put(COLUMN_AMOUNT, transaction.getAmount());
