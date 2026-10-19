@@ -148,31 +148,49 @@ public class BudgetActivity extends Activity {
             LinearLayout header = new LinearLayout(this);
             header.setOrientation(LinearLayout.HORIZONTAL);
             header.setGravity(Gravity.CENTER_VERTICAL);
-            TextView name = UiKit.text(this, glyph(b.getName()) + "  " + b.getName(), 15, UiKit.TEXT, true);
-            header.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-
+            TextView name = UiKit.text(this, glyph(b.getName()) + "  " + b.getName(),
+                    15, UiKit.TEXT, true);
+            header.addView(name, new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
             if (b.isSinkingFund()) header.addView(UiKit.pill(this, "SINKING", UiKit.PURPLE));
             else if (b.isRolloverEnabled()) header.addView(UiKit.pill(this, "ROLLOVER", UiKit.CYAN));
             item.addView(header);
 
-            LinearLayout nums = new LinearLayout(this);
-            nums.setOrientation(LinearLayout.HORIZONTAL);
-            nums.setGravity(Gravity.CENTER_VERTICAL);
-            nums.setPadding(0, UiKit.dp(this, 12), 0, UiKit.dp(this, 7));
-            nums.addView(UiKit.text(this, money(spent) + " spent", 12, UiKit.MUTED, false),
-                    new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-            nums.addView(UiKit.text(this, money(remaining) + " left", 12, accent, true));
-            item.addView(nums);
+            LinearLayout visual = new LinearLayout(this);
+            visual.setOrientation(LinearLayout.HORIZONTAL);
+            visual.setGravity(Gravity.CENTER_VERTICAL);
+            visual.setPadding(0, UiKit.dp(this, 13), 0, 0);
 
-            int progress = total > 0 ? (int)(Math.min(1.0, ratio) * 1000) : 0;
-            item.addView(UiKit.progress(this, progress, accent));
+            DonutProgressView donut = new DonutProgressView(this);
+            donut.configure(Math.max(0, remaining), total, "LEFT", accent);
+            donut.setContentDescription(b.getName() + ": " + donut.getDisplayedPercent()
+                    + " percent remaining");
+            visual.addView(donut, new LinearLayout.LayoutParams(
+                    UiKit.dp(this, 108), UiKit.dp(this, 108)));
 
-            TextView meta = UiKit.text(this,
+            LinearLayout info = new LinearLayout(this);
+            info.setOrientation(LinearLayout.VERTICAL);
+            info.setPadding(UiKit.dp(this, 16), 0, 0, 0);
+            int usedPercent = total > 0 ? (int) Math.round(spent / total * 100) : 0;
+            info.addView(UiKit.text(this,
+                    total > 0 ? usedPercent + "% USED" : "SET A BUDGET",
+                    12, UiKit.CYAN, true));
+            info.addView(UiKit.gap(this, 8));
+            info.addView(UiKit.text(this, money(spent) + " spent", 13, UiKit.TEXT, true));
+            info.addView(UiKit.gap(this, 5));
+            info.addView(UiKit.text(this,
+                    remaining < 0 ? money(-remaining) + " over budget" :
+                            money(remaining) + " remaining",
+                    13, accent, true));
+            info.addView(UiKit.gap(this, 5));
+            info.addView(UiKit.text(this,
                     "Monthly " + money(b.getMonthlyAmount())
-                            + (b.getCarryAmount() > 0 ? "  ·  carried " + money(b.getCarryAmount()) : ""),
-                    10, UiKit.MUTED, false);
-            meta.setPadding(0, UiKit.dp(this, 9), 0, 0);
-            item.addView(meta);
+                            + (b.getCarryAmount() > 0
+                            ? "  ·  carried " + money(b.getCarryAmount()) : ""),
+                    10, UiKit.MUTED, false));
+            visual.addView(info, new LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+            item.addView(visual);
 
             item.setOnClickListener(v -> showDialog(b));
             list.addView(item);
