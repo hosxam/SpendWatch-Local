@@ -61,7 +61,14 @@ public class MerchantLearningInstrumentedTest {
                 "Health & Pharmacy", "card_purchase", 23.0);
         assertTrue(db.insertTransaction(next) > 0);
         assertEquals("Food & Dining", next.getCategory());
-        assertEquals("Food & Dining", db.getAllTransactions().get(0).getCategory());
+        boolean persisted = false;
+        for (Transaction saved : db.getAllTransactions()) {
+            if (saved.getId() == next.getId()) {
+                assertEquals("Food & Dining", saved.getCategory());
+                persisted = true;
+            }
+        }
+        assertTrue("Future purchase should be persisted with learned category", persisted);
 
         // Different merchants and different banks do not inherit this private correction.
         Transaction unrelated = transaction("NMC Hospital Pharmacy", "Ruya",
