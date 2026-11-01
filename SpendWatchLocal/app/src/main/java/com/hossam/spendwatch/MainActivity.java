@@ -497,6 +497,7 @@ public class MainActivity extends Activity {
     private void renderGoals() {
         addHeader("BUILD YOUR FUTURE", "Savings goals",
                 "Targets you save towards, separate from the budgets you spend from.");
+        addGlobalTotals();
 
         List<SavingsGoal> goals = database.getSavingsGoals();
         double saved = database.getTotalSavedForGoals();
@@ -522,6 +523,10 @@ public class MainActivity extends Activity {
         TextView create = UiKit.pill(this, "＋  NEW SAVINGS GOAL", UiKit.PURPLE);
         create.setOnClickListener(v -> showGoalEditor(null));
         content.addView(create);
+        content.addView(UiKit.gap(this, 12));
+        TextView reset = UiKit.pill(this, "RESET ONLY SAVINGS GOALS", UiKit.AMBER);
+        reset.setOnClickListener(v -> confirmResetGoals());
+        content.addView(reset);
         content.addView(UiKit.gap(this, 14));
 
         TextView notice = UiKit.text(this,
@@ -754,8 +759,23 @@ public class MainActivity extends Activity {
         return row;
     }
 
+    private void addGlobalTotals() {
+        LinearLayout totals = new LinearLayout(this);
+        totals.setOrientation(LinearLayout.HORIZONTAL);
+        totals.addView(metricCard("TOTAL SPENT",
+                money(database.getTotalSpentAedThisMonth()),
+                "Current budget cycle", UiKit.RED), weightWithEnd());
+        totals.addView(metricCard("BALANCE LEFT",
+                database.getMonthlyIncome() > 0
+                        ? money(database.getEstimatedBalanceRemaining()) : "Set income",
+                "Estimated, not live bank balance", UiKit.GREEN), weightNoEnd());
+        content.addView(totals);
+        content.addView(UiKit.gap(this, 15));
+    }
+
     private void renderBudgets() {
         addHeader("CONTROL CENTER", "Budget envelopes", "Give every dirham a job without making budgeting feel like a spreadsheet.");
+        addGlobalTotals();
 
         List<BudgetEnvelope> budgets = database.getBudgets();
         double allocated = 0, spent = 0, remaining = 0;
@@ -813,6 +833,7 @@ public class MainActivity extends Activity {
 
     private void renderTransactions() {
         addHeader("LEDGER", "Activity", "Every captured expense, transfer, income event and refund in one clean timeline.");
+        addGlobalTotals();
 
         content.addView(metricCard("TOTAL SPENT THIS CYCLE",
                 money(database.getTotalSpentAedThisMonth()),
@@ -874,6 +895,7 @@ public class MainActivity extends Activity {
 
     private void renderInsights() {
         addHeader("LOCAL INTELLIGENCE", "Insights", "Fast financial signals calculated entirely on-device from your own activity.");
+        addGlobalTotals();
 
         double income = database.getMonthlyIncome();
         double spent = database.getTotalSpentAedThisMonth();
@@ -986,6 +1008,7 @@ public class MainActivity extends Activity {
 
     private void renderSettings() {
         addHeader("SYSTEM", "Settings", "Tune the money engine, capture rules and local privacy controls.");
+        addGlobalTotals();
 
         LinearLayout privacy = UiKit.card(this, 18);
         privacy.setBackground(UiKit.gradient(this, 24, Color.rgb(15, 45, 45), Color.rgb(16, 29, 47)));
