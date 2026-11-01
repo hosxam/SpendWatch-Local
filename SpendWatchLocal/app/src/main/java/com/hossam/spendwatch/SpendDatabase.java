@@ -14,7 +14,7 @@ import java.util.Locale;
 public class SpendDatabase extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "spendwatch_uae.db";
-    private static final int DATABASE_VERSION = 6;
+    private static final int DATABASE_VERSION = 7;
 
     public static final String TABLE_TRANSACTIONS = "transactions";
     public static final String COLUMN_ID = "id";
@@ -32,10 +32,12 @@ public class SpendDatabase extends SQLiteOpenHelper {
     private static final String TABLE_RECURRING = "recurring_bills";
     private static final String TABLE_SETTINGS = "settings";
     private static final String TABLE_SAVINGS_GOALS = "savings_goals";
+    private static final String TABLE_RESET_HISTORY = "reset_history";
     // Explicit user corrections only, separate from automatically guessed categories.
     private static final String TABLE_MERCHANT_RULES = "merchant_category_rules";
 
     private static SpendDatabase instance;
+    private final Context applicationContext;
 
     public static synchronized SpendDatabase getInstance(Context context) {
         if (instance == null) {
@@ -46,6 +48,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
 
     private SpendDatabase(Context context) {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
+        applicationContext = context.getApplicationContext();
     }
 
     @Override
@@ -54,6 +57,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
         createV2Tables(db);
         createMerchantRulesTable(db);
         createSavingsGoalsTable(db);
+        createResetHistoryTable(db);
         seedDefaultBudgets(db);
     }
 
@@ -79,7 +83,8 @@ public class SpendDatabase extends SQLiteOpenHelper {
                 + "monthly_amount REAL NOT NULL DEFAULT 0, "
                 + "rollover_enabled INTEGER NOT NULL DEFAULT 0, "
                 + "carry_amount REAL NOT NULL DEFAULT 0, "
-                + "is_sinking INTEGER NOT NULL DEFAULT 0"
+                + "is_sinking INTEGER NOT NULL DEFAULT 0, "
+                + "sort_order INTEGER NOT NULL DEFAULT 0"
                 + ");");
 
         db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_RECURRING + " ("
@@ -105,7 +110,179 @@ public class SpendDatabase extends SQLiteOpenHelper {
         createV2Tables(db);
         createMerchantRulesTable(db);
         createSavingsGoalsTable(db);
+        createResetHistoryTable(db);
+        if (oldVersion < 7) {
+            db.execSQL("ALTER TABLE " + TABLE_BUDGETS
+                    + " ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
+            db.execSQL("UPDATE " + TABLE_BUDGETS + " SET sort_order=id");
+        }
         seedDefaultBudgets(db);
+    }
+
+    private void createResetHistoryTable(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_RESET_HISTORY + " ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "reset_time INTEGER NOT NULL, "
+                + "reset_kind TEXT NOT NULL, "
+                + "item_name TEXT NOT NULL, "
+                + "previous_amount REAL NOT NULL, "
+                + "target_amount REAL NOT NULL"
+                + ");");
+    }
+
+    private void signalLedgerChange() {
+        // Async, coalesced refresh; never blocks the notification listener.
+        LocalLedgerExporter.queueRefresh(applicationContext);
+    }
+
+    public synchronized int getBudgetStartDay() {
+        return Math.max(1, Math.min(28, (int) getSettingDouble("budget_start_day", 1)));
+    }
+
+    public synchronized void setBudgetStartDay(int day) {
+        if (day < 1 || day > 28) throw new IllegalArgumentException("Start day must be 1-28");
+        // Keep existing carry balances; only the period boundary changes.
+        setSetting("budget_start_day", String.valueOf(day));
+        setSetting("last_rollover_cycle_start", String.valueOf(getCycleStart(System.currentTimeMillis())));
+        signalLedgerChange();
+    }
+
+    public synchronized long getCycleStart(long timestamp) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTimeInMillis(timestamp);
+        int day = getBudgetStartDay();
+        cal.set(Calendar.DAY_OF_MONTH, day);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        cal.set(Calendar.MILLISECOND, 0);
+        if (timestamp < cal.getTimeInMillis()) cal.add(Calendar.MONTH, -1);
+        return cal.getTimeInMillis();
+    }
+
+    public synchronized long getCycleEnd(long timestamp) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTimeInMillis(getCycleStart(timestamp));
+        cal.add(Calendar.MONTH, 1);
+        return cal.getTimeInMillis();
+    }
+
+    public synchronized long getCurrentCycleStart() {
+        return getCycleStart(System.currentTimeMillis());
+    }
+
+    public synchronized long getCurrentCycleEnd() {
+        return getCycleEnd(System.currentTimeMillis());
+    }
+
+    public synchronized double getEstimatedBalanceRemaining() {
+        return getMonthlyIncome() - getTotalSpentAedThisMonth();
+    }
+
+    public synchronized double getTotalAllocatedBudget() {
+        double total = 0;
+        for (BudgetEnvelope b : getBudgets()) total += Math.max(0, b.getEffectiveAmount());
+        return total;
+    }
+
+    public synchronized double getTotalBudgetRemaining() {
+        double total = 0;
+        for (BudgetEnvelope b : getBudgets()) {
+            if (b.getEffectiveAmount() > 0) {
+                total += b.getEffectiveAmount() - getSpentForCategoryThisMonth(b.getName());
+            }
+        }
+        return total;
+    }
+
+    public synchronized List<String[]> getResetHistoryRows() {
+        ArrayList<String[]> out = new ArrayList<>();
+        Cursor cur = getReadableDatabase().query(TABLE_RESET_HISTORY, null,
+                null, null, null, null, "reset_time DESC, id DESC");
+        try {
+            while (cur.moveToNext()) {
+                out.add(new String[]{
+                        String.valueOf(cur.getLong(cur.getColumnIndexOrThrow("reset_time"))),
+                        cur.getString(cur.getColumnIndexOrThrow("reset_kind")),
+                        cur.getString(cur.getColumnIndexOrThrow("item_name")),
+                        String.valueOf(cur.getDouble(cur.getColumnIndexOrThrow("previous_amount"))),
+                        String.valueOf(cur.getDouble(cur.getColumnIndexOrThrow("target_amount")))
+                });
+            }
+        } finally { cur.close(); }
+        return out;
+    }
+
+    private void recordReset(SQLiteDatabase db, long timestamp, String kind, String name,
+                             double before, double target) {
+        ContentValues v = new ContentValues();
+        v.put("reset_time", timestamp);
+        v.put("reset_kind", kind);
+        v.put("item_name", name);
+        v.put("previous_amount", before);
+        v.put("target_amount", target);
+        db.insertOrThrow(TABLE_RESET_HISTORY, null, v);
+    }
+
+    public synchronized void resetBudgetsPreservingHistory() {
+        ensureMonthlyRollover();
+        long now = System.currentTimeMillis();
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            for (BudgetEnvelope b : getBudgetsRaw()) {
+                double remaining = b.getEffectiveAmount() - getSpentForCategoryThisMonth(b.getName());
+                recordReset(db, now, "ENVELOPE", b.getName(), remaining, b.getEffectiveAmount());
+            }
+            ContentValues values = new ContentValues();
+            values.put("carry_amount", 0d);
+            db.update(TABLE_BUDGETS, values, null, null);
+            ContentValues setting = new ContentValues();
+            setting.put("key", "budget_reset_at");
+            setting.put("value", String.valueOf(now));
+            db.insertWithOnConflict(TABLE_SETTINGS, null, setting, SQLiteDatabase.CONFLICT_REPLACE);
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+        signalLedgerChange();
+    }
+
+    public synchronized void resetGoalsPreservingHistory() {
+        long now = System.currentTimeMillis();
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            for (SavingsGoal g : getSavingsGoals()) {
+                recordReset(db, now, "GOAL", g.getName(), g.getSavedAmount(), g.getTargetAmount());
+            }
+            ContentValues values = new ContentValues();
+            values.put("saved_amount", 0d);
+            db.update(TABLE_SAVINGS_GOALS, values, null, null);
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+        signalLedgerChange();
+    }
+
+    public synchronized boolean moveBudget(long id, int direction) {
+        List<BudgetEnvelope> ordered = getBudgetsRaw();
+        int index = -1;
+        for (int i = 0; i < ordered.size(); i++) if (ordered.get(i).getId() == id) index = i;
+        int target = index + direction;
+        if (index < 0 || target < 0 || target >= ordered.size()) return false;
+        BudgetEnvelope temp = ordered.get(index);
+        ordered.set(index, ordered.get(target));
+        ordered.set(target, temp);
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            for (int i = 0; i < ordered.size(); i++) {
+                ContentValues v = new ContentValues();
+                v.put("sort_order", i);
+                db.update(TABLE_BUDGETS, v, "id=?", new String[]{String.valueOf(ordered.get(i).getId())});
+            }
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
+        signalLedgerChange();
+        return true;
     }
 
     private void createSavingsGoalsTable(SQLiteDatabase db) {
