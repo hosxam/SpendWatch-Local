@@ -88,6 +88,22 @@ public class BudgetActivity extends Activity {
         TextView add = UiKit.pill(this, "＋  NEW ENVELOPE", UiKit.CYAN);
         add.setOnClickListener(v -> showDialog(null));
         root.addView(add);
+        root.addView(UiKit.gap(this, 12));
+
+        LinearLayout cycleBar = new LinearLayout(this);
+        cycleBar.setOrientation(LinearLayout.VERTICAL);
+        cycleBar.setGravity(Gravity.START);
+        TextView day = UiKit.pill(this, "CYCLE START: DAY " + database.getBudgetStartDay(), UiKit.CYAN);
+        day.setOnClickListener(v -> showStartDayPicker());
+        cycleBar.addView(day);
+        TextView reset = UiKit.pill(this, "RESET ENVELOPES", UiKit.AMBER);
+        LinearLayout.LayoutParams resetLp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        resetLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
+        reset.setLayoutParams(resetLp);
+        reset.setOnClickListener(v -> confirmResetEnvelopes());
+        cycleBar.addView(reset);
+        root.addView(cycleBar);
 
         root.addView(UiKit.gap(this, 16));
         TextView section = UiKit.label(this, "YOUR ENVELOPES");
@@ -192,10 +208,80 @@ public class BudgetActivity extends Activity {
                     0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
             item.addView(visual);
 
+            LinearLayout reorder = new LinearLayout(this);
+            reorder.setOrientation(LinearLayout.HORIZONTAL);
+            reorder.setGravity(Gravity.CENTER_VERTICAL);
+            reorder.setPadding(0, UiKit.dp(this, 12), 0, 0);
+            TextView moveUp = UiKit.pill(this, "↑  MOVE UP", UiKit.CYAN);
+            moveUp.setContentDescription("Move " + b.getName() + " up");
+            moveUp.setOnClickListener(v -> {
+                database.moveBudget(b.getId(), -1);
+                refresh();
+            });
+            reorder.addView(moveUp);
+            TextView moveDown = UiKit.pill(this, "↓  MOVE DOWN", UiKit.CYAN);
+            moveDown.setContentDescription("Move " + b.getName() + " down");
+            LinearLayout.LayoutParams downLp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            downLp.setMargins(UiKit.dp(this, 10), 0, 0, 0);
+            reorder.addView(moveDown, downLp);
+            moveDown.setOnClickListener(v -> {
+                database.moveBudget(b.getId(), 1);
+                refresh();
+            });
+            TextView edit = UiKit.pill(this, "EDIT", UiKit.PURPLE);
+            LinearLayout.LayoutParams editLp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            editLp.setMargins(UiKit.dp(this, 10), 0, 0, 0);
+            reorder.addView(edit, editLp);
+            edit.setOnClickListener(v -> showDialog(b));
+            item.addView(reorder);
             item.setOnClickListener(v -> showDialog(b));
             list.addView(item);
             list.addView(UiKit.gap(this, 9));
         }
+    }
+
+    private void confirmResetEnvelopes() {
+        new AlertDialog.Builder(this)
+                .setTitle("Start a fresh envelope period?")
+                .setMessage("Spent amounts for envelopes restart from zero and carried unused money resets. "
+                        + "Your monthly allocations remain. Every previous transaction is kept, "
+                        + "and old envelope balances are recorded in Reset History / Excel.")
+                .setPositiveButton("Reset envelopes", (dialog, which) -> {
+                    database.resetBudgetsPreservingHistory();
+                    refresh();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void showStartDayPicker() {
+        EditText input = input("Start day 1 to 31");
+        input.setInputType(InputType.TYPE_CLASS_NUMBER);
+        input.setText(String.valueOf(database.getBudgetStartDay()));
+        LinearLayout frame = new LinearLayout(this);
+        frame.setPadding(UiKit.dp(this, 24), 0, UiKit.dp(this, 24), 0);
+        frame.addView(input);
+        new AlertDialog.Builder(this)
+                .setTitle("Monthly budget cycle")
+                .setMessage("Choose the day your budget month begins. For short months, "
+                        + "days 29–31 are treated as the last day. All historical "
+                        + "transactions remain untouched.")
+                .setView(frame)
+                .setPositiveButton("Save", (d, w) -> {
+                    try {
+                        int value = Integer.parseInt(input.getText().toString().trim());
+                        database.setBudgetStartDay(value);
+                        MonthlySummaryReceiver.scheduleNext(this);
+                        SpendWatchWidget.updateAll(this);
+                        recreate();
+                    } catch (Exception ex) {
+                        Toast.makeText(this, "Choose a day from 1 to 31.", Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     private void showDialog(BudgetEnvelope existing) {

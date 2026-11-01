@@ -15,28 +15,22 @@ public class MonthlySummaryReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        Calendar end = Calendar.getInstance();
-        end.set(Calendar.DAY_OF_MONTH, 1);
-        end.set(Calendar.HOUR_OF_DAY, 0);
-        end.set(Calendar.MINUTE, 0);
-        end.set(Calendar.SECOND, 0);
-        end.set(Calendar.MILLISECOND, 0);
+        SpendDatabase db = SpendDatabase.getInstance(context);
+        long end = db.getCurrentCycleStart();
+        long start = db.getCycleStart(end - 1);
+        double spent = db.getTotalSpentAedBetween(start, end - 1);
 
-        Calendar start = (Calendar) end.clone();
-        start.add(Calendar.MONTH, -1);
-
-        double spent = SpendDatabase.getInstance(context)
-                .getTotalSpentAedBetween(start.getTimeInMillis(), end.getTimeInMillis() - 1);
-
-        String month = new SimpleDateFormat("MMMM", Locale.getDefault()).format(start.getTime());
-        NotificationHelper.notifyMonthlySummary(context, spent, month);
+        String label = new SimpleDateFormat("MMM d", Locale.getDefault()).format(new java.util.Date(start))
+                + " – " + new SimpleDateFormat("MMM d", Locale.getDefault()).format(new java.util.Date(end - 1));
+        NotificationHelper.notifyMonthlySummary(context, spent, label);
+        LocalLedgerExporter.queueRefresh(context);
         scheduleNext(context);
     }
 
     public static void scheduleNext(Context context) {
+        long nextPeriod = SpendDatabase.getInstance(context).getCurrentCycleEnd();
         Calendar next = Calendar.getInstance();
-        next.add(Calendar.MONTH, 1);
-        next.set(Calendar.DAY_OF_MONTH, 1);
+        next.setTimeInMillis(nextPeriod);
         next.set(Calendar.HOUR_OF_DAY, 9);
         next.set(Calendar.MINUTE, 0);
         next.set(Calendar.SECOND, 0);
