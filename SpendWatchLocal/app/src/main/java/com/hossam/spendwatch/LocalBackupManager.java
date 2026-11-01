@@ -74,6 +74,8 @@ public final class LocalBackupManager {
     public static void importBackup(Context context, Uri source) throws Exception {
         SpendDatabase db = SpendDatabase.getInstance(context);
         File candidate = new File(context.getCacheDir(), "spendwatch-import-" + System.nanoTime() + ".db");
+        File candidateWal = new File(candidate.getAbsolutePath() + "-wal");
+        File candidateShm = new File(candidate.getAbsolutePath() + "-shm");
 
         try {
             boolean found = false;
@@ -83,13 +85,22 @@ public final class LocalBackupManager {
                     ZipEntry entry;
                     while ((entry = zip.getNextEntry()) != null) {
                         String name = entry.getName();
-                        if (!entry.isDirectory() && (name.equals(ENTRY_NAME)
-                                || name.equals("database/" + DATABASE_FILE)
-                                || name.equals(DATABASE_FILE))) {
-                            if (found) throw new IOException("Backup includes duplicate databases");
-                            found = true;
+                        File target = null;
+                        if (!entry.isDirectory()) {
+                            if (name.equals(ENTRY_NAME) || name.equals("database/" + DATABASE_FILE)
+                                    || name.equals(DATABASE_FILE)) {
+                                if (found) throw new IOException("Backup includes duplicate databases");
+                                found = true;
+                                target = candidate;
+                            } else if (name.equals(ENTRY_NAME + "-wal")) {
+                                target = candidateWal;
+                            } else if (name.equals(ENTRY_NAME + "-shm")) {
+                                target = candidateShm;
+                            }
+                        }
+                        if (target != null) {
                             long bytes = 0;
-                            try (FileOutputStream output = new FileOutputStream(candidate)) {
+                            try (FileOutputStream output = new FileOutputStream(target)) {
                                 byte[] buffer = new byte[16 * 1024];
                                 int read;
                                 while ((read = zip.read(buffer)) != -1) {
@@ -147,6 +158,8 @@ public final class LocalBackupManager {
             }
         } finally {
             if (candidate.exists()) candidate.delete();
+            if (candidateWal.exists()) candidateWal.delete();
+            if (candidateShm.exists()) candidateShm.delete();
         }
     }
 
@@ -156,11 +169,18 @@ public final class LocalBackupManager {
         SQLiteDatabase database = null;
         try {
             database = SQLiteDatabase.openDatabase(
-                    file.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
+                    file.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE);
 
             try (Cursor result = database.rawQuery("PRAGMA integrity_check", null)) {
                 if (!result.moveToFirst() || !"ok".equalsIgnoreCase(result.getString(0)))
                     throw new IOException("Database integrity verification failed");
+            }
+            // Older Android debug installs can have outstanding WAL data. Opening
+            // the sidecars alongside the DB replays it; the checkpoint safely folds
+            // all committed transactions into the primary file before import.
+            try (Cursor checkpoint = database.rawQuery("PRAGMA wal_checkpoint(FULL)", null)) {
+                if (checkpoint.moveToFirst() && checkpoint.getInt(0) != 0)
+                    throw new IOException("Backup WAL is busy");
             }
             int version = database.getVersion();
             if (version < 1 || version > 6)
