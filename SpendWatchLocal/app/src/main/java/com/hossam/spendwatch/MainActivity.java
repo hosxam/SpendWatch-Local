@@ -491,6 +491,7 @@ public class MainActivity extends Activity {
     private void renderGoals() {
         addHeader("BUILD YOUR FUTURE", "Savings goals",
                 "Targets you save towards, separate from the budgets you spend from.");
+        addOverallTotals();
 
         List<SavingsGoal> goals = database.getSavingsGoals();
         double saved = database.getTotalSavedForGoals();
@@ -812,8 +813,22 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void addOverallTotals() {
+        LinearLayout totals = new LinearLayout(this);
+        totals.setOrientation(LinearLayout.HORIZONTAL);
+        totals.addView(metricCard("TOTAL SPENT",
+                money(database.getTotalSpentAedThisMonth()), "current cycle",
+                UiKit.RED), weightWithEnd());
+        totals.addView(metricCard("BALANCE LEFT",
+                money(database.getTotalEnvelopeAvailable()), "all envelopes",
+                UiKit.GREEN), weightNoEnd());
+        content.addView(totals);
+        content.addView(UiKit.gap(this, 16));
+    }
+
     private void renderTransactions() {
         addHeader("LEDGER", "Activity", "Every captured expense, transfer, income event and refund in one clean timeline.");
+        addOverallTotals();
 
         List<Transaction> txs = database.getAllTransactions();
         int expenseCount = 0, incomeCount = 0, transferCount = 0;
@@ -869,6 +884,7 @@ public class MainActivity extends Activity {
 
     private void renderInsights() {
         addHeader("LOCAL INTELLIGENCE", "Insights", "Fast financial signals calculated entirely on-device from your own activity.");
+        addOverallTotals();
 
         double income = database.getMonthlyIncome();
         double spent = database.getTotalSpentAedThisMonth();
