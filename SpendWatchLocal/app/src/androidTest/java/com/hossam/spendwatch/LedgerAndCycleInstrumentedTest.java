@@ -189,6 +189,12 @@ public class LedgerAndCycleInstrumentedTest {
 
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         LocalLedgerExporter.writeWorkbook(context, output);
+        // Persist the synthetic workbook for CI to extract and verify with a
+        // second independent Excel reader outside Android.
+        try (java.io.FileOutputStream ledger = new java.io.FileOutputStream(
+                new java.io.File(context.getFilesDir(), "spendwatch-qa-ledger.xlsx"))) {
+            ledger.write(output.toByteArray());
+        }
         Map<String,String> entries = new HashMap<>();
         try (ZipInputStream zip = new ZipInputStream(
                 new ByteArrayInputStream(output.toByteArray()))) {
