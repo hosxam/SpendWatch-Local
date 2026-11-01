@@ -43,8 +43,17 @@ public final class ExcelHistory {
         IO.execute(() -> {
             String str = SpendDatabase.getInstance(app).getSetting(SETTING, "");
             if (str.isEmpty()) return;
-            try { export(app, Uri.parse(str)); }
-            catch (Exception e) { Log.e(TAG, "Excel synchronization failed; history is still in SQLite", e); }
+            try {
+                export(app, Uri.parse(str));
+                SpendDatabase.getInstance(app).setSetting("excel_last_sync_at",
+                        Long.toString(System.currentTimeMillis()));
+                SpendDatabase.getInstance(app).setSetting("excel_last_error", "");
+            } catch (Exception e) {
+                SpendDatabase.getInstance(app).setSetting("excel_last_error",
+                        e.getClass().getSimpleName() + ": " +
+                                (e.getMessage() == null ? "unknown error" : e.getMessage()));
+                Log.e(TAG, "Excel synchronization failed; history is still in SQLite", e);
+            }
         });
     }
 
