@@ -1012,7 +1012,7 @@ public class MainActivity extends Activity {
         content.addView(UiKit.gap(this, 18));
         sectionRow("BUDGET CYCLE & RESETS", "", () -> {});
         content.addView(settingRow("Budget cycle starts", "Day " + database.getCycleStartDay()
-                + " of each month (1–28)", UiKit.CYAN, this::showCycleStartPicker));
+                + " of each month (1–31, clamped)", UiKit.CYAN, this::showCycleStartPicker));
         content.addView(UiKit.gap(this, 8));
         content.addView(settingRow("Soft reset envelopes",
                 "Archive balances; restart this cycle without deleting transactions",
@@ -1262,8 +1262,8 @@ public class MainActivity extends Activity {
     }
 
     private void showCycleStartPicker() {
-        String[] days = new String[28];
-        for (int i=0;i<28;i++) days[i] = "Day " + (i+1);
+        String[] days = new String[31];
+        for (int i=0;i<31;i++) days[i] = "Day " + (i+1);
         new AlertDialog.Builder(this).setTitle("Budget cycle start day")
                 .setSingleChoiceItems(days, database.getCycleStartDay()-1,
                         (dialog, which) -> {
