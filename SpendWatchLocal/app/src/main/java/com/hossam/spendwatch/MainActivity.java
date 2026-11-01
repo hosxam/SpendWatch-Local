@@ -53,6 +53,8 @@ public class MainActivity extends Activity {
     private boolean receiverRegistered = false;
     private static final int EXPORT_BACKUP_REQUEST = 8051;
     private static final int IMPORT_BACKUP_REQUEST = 8052;
+    private static final int LINK_LEDGER_REQUEST = 8053;
+    private static final int EXPORT_LEDGER_REQUEST = 8054;
 
     private final String[] NAV_LABELS = {"Home", "Budgets", "Goals", "Activity", "Insights", "Settings"};
     private final String[] NAV_ICONS = {"⌂", "◫", "◎", "⇅", "↗", "⚙"};
@@ -69,6 +71,7 @@ public class MainActivity extends Activity {
         database = SpendDatabase.getInstance(this);
         NotificationHelper.ensureChannels(this);
         MonthlySummaryReceiver.scheduleNext(this);
+        LocalLedgerExporter.queueRefresh(this);
         requestNotificationPermissionIfNeeded();
         configureWindow();
         buildShell();
@@ -257,6 +260,14 @@ public class MainActivity extends Activity {
         double projectedSpend = database.getProjectedMonthEndSpend();
         double projectedBalance = income > 0
                 ? income - projectedSpend - database.getTotalSinkingMonthlyAllocation() : 0.0;
+        TextView cycleLabel = UiKit.text(this,
+                "BUDGET CYCLE: " + new SimpleDateFormat("MMM d", Locale.US)
+                        .format(new Date(database.getCurrentCycleStart()))
+                        + " – " + new SimpleDateFormat("MMM d", Locale.US)
+                        .format(new Date(database.getCurrentCycleEnd() - 1)),
+                11, UiKit.MUTED, true);
+        content.addView(cycleLabel);
+        content.addView(UiKit.gap(this, 10));
 
         LinearLayout hero = UiKit.card(this, 22);
         hero.setBackground(UiKit.gradient(this, 28,
@@ -302,16 +313,22 @@ public class MainActivity extends Activity {
         content.addView(UiKit.gap(this, 14));
         LinearLayout stats1 = new LinearLayout(this);
         stats1.setOrientation(LinearLayout.HORIZONTAL);
-        stats1.addView(metricCard("SPENT", money(spent), "this month", UiKit.RED), weightWithEnd());
+        stats1.addView(metricCard("TOTAL SPENT", money(spent), "this budget cycle", UiKit.RED), weightWithEnd());
         stats1.addView(metricCard("BILLS", money(upcoming), "still upcoming", UiKit.AMBER), weightNoEnd());
         content.addView(stats1);
 
         content.addView(UiKit.gap(this, 10));
         LinearLayout stats2 = new LinearLayout(this);
         stats2.setOrientation(LinearLayout.HORIZONTAL);
-        stats2.addView(metricCard("INCOME", income > 0 ? money(income) : "Not set", "monthly", UiKit.GREEN), weightWithEnd());
+        stats2.addView(metricCard("BALANCE LEFT", income > 0 ? money(database.getEstimatedBalanceRemaining()) : "Set income",
+                "estimated: income minus spending", UiKit.GREEN), weightWithEnd());
         stats2.addView(metricCard("FORECAST", income > 0 ? money(projectedBalance) : "—", "month-end balance", UiKit.PURPLE), weightNoEnd());
         content.addView(stats2);
+        content.addView(UiKit.gap(this, 8));
+        LinearLayout allTime = metricCard("ALL-TIME SPENDING",
+                money(database.getTotalSpentAedAllTime()),
+                "recorded AED expenses across all months • bank balance not connected", UiKit.CYAN);
+        content.addView(allTime);
 
         content.addView(UiKit.gap(this, 20));
         sectionRow("LOCAL INTELLIGENCE", "INSIGHTS", () -> { currentTab = 4; renderBottomNav(); renderCurrent(); });
@@ -762,6 +779,10 @@ public class MainActivity extends Activity {
         second.addView(metricCard("SPENT", money(spent), "from envelopes", UiKit.RED), weightWithEnd());
         second.addView(metricCard("SINKING", money(database.getTotalSinkingMonthlyAllocation()), "monthly set-aside", UiKit.PURPLE), weightNoEnd());
         content.addView(second);
+        content.addView(UiKit.gap(this, 10));
+        content.addView(metricCard("TOTAL RECORDED SPENT",
+                money(database.getTotalSpentAedThisMonth()),
+                "entire budget cycle, including unallocated categories", UiKit.RED));
 
         content.addView(UiKit.gap(this, 18));
         LinearLayout actions = new LinearLayout(this);
@@ -793,6 +814,12 @@ public class MainActivity extends Activity {
     private void renderTransactions() {
         addHeader("LEDGER", "Activity", "Every captured expense, transfer, income event and refund in one clean timeline.");
 
+        content.addView(metricCard("TOTAL SPENT THIS CYCLE",
+                money(database.getTotalSpentAedThisMonth()),
+                "All time: " + money(database.getTotalSpentAedAllTime())
+                        + "  •  Budget remaining: " + money(database.getTotalBudgetRemaining()),
+                UiKit.RED));
+        content.addView(UiKit.gap(this, 12));
         List<Transaction> txs = database.getAllTransactions();
         int expenseCount = 0, incomeCount = 0, transferCount = 0;
         for (Transaction t : txs) {
@@ -855,6 +882,15 @@ public class MainActivity extends Activity {
         Calendar now = Calendar.getInstance();
         int day = Math.max(1, now.get(Calendar.DAY_OF_MONTH));
         double dailyAverage = spent / day;
+        LinearLayout financialTotals = new LinearLayout(this);
+        financialTotals.setOrientation(LinearLayout.HORIZONTAL);
+        financialTotals.addView(metricCard("TOTAL SPENT", money(spent),
+                "current cycle", UiKit.RED), weightWithEnd());
+        financialTotals.addView(metricCard("BALANCE LEFT",
+                income > 0 ? money(database.getEstimatedBalanceRemaining()) : "Set income",
+                "estimated, not bank balance", UiKit.GREEN), weightNoEnd());
+        content.addView(financialTotals);
+        content.addView(UiKit.gap(this, 12));
 
         LinearLayout hero = UiKit.card(this, 20);
         hero.setBackground(UiKit.gradient(this, 26, Color.rgb(18, 41, 61), Color.rgb(28, 24, 58)));
@@ -964,6 +1000,11 @@ public class MainActivity extends Activity {
         sectionRow("MONEY", "", () -> {});
         content.addView(settingRow("Monthly income", database.getMonthlyIncome() > 0 ? money(database.getMonthlyIncome()) : "Not set", UiKit.GREEN, this::showIncomeDialog));
         content.addView(UiKit.gap(this, 8));
+        content.addView(settingRow("Budget start day",
+                "Day " + database.getBudgetStartDay()
+                        + " • choose your budget cycle boundary in Envelopes", UiKit.CYAN,
+                () -> startActivity(new Intent(this, BudgetActivity.class))));
+        content.addView(UiKit.gap(this, 8));
         content.addView(settingRow("Budget envelopes", "Allocations, rollover & sinking funds", UiKit.CYAN,
                 () -> startActivity(new Intent(this, BudgetActivity.class))));
         content.addView(UiKit.gap(this, 8));
@@ -997,11 +1038,43 @@ public class MainActivity extends Activity {
                 "Recover your data after reinstalling or changing phones",
                 UiKit.CYAN, this::confirmBackupImport));
         content.addView(UiKit.gap(this, 8));
-        content.addView(settingRow("Clear transaction history", "Merchant preferences and budgets stay intact",
+        content.addView(settingRow("Export Excel workbook",
+                "Download all-time ledger (5 sheets: transactions, monthly history, budgets, goals, resets)",
+                UiKit.CYAN, () -> chooseLedgerFile(false)));
+        content.addView(UiKit.gap(this, 8));
+        content.addView(settingRow("Link auto-updating Excel",
+                LocalLedgerExporter.hasLinkedSpreadsheet(this)
+                        ? "Linked • updated after each recorded transaction or edit"
+                        : "Choose one .xlsx file to keep refreshed automatically",
+                UiKit.GREEN, () -> chooseLedgerFile(true)));
+        content.addView(UiKit.gap(this, 8));
+        if (LocalLedgerExporter.hasLinkedSpreadsheet(this)) {
+            content.addView(settingRow("Stop automatic Excel updates",
+                    "Keep the existing Excel file; disconnect auto-refresh",
+                    UiKit.AMBER, () -> {
+                        LocalLedgerExporter.unlinkSpreadsheet(this);
+                        renderCurrent();
+                    }));
+            content.addView(UiKit.gap(this, 8));
+        }
+        String ledgerError = LocalLedgerExporter.getLastError(this);
+        if (ledgerError != null) {
+            content.addView(UiKit.text(this,
+                    "Excel last update failed: " + ledgerError, 11, UiKit.RED, false));
+        }
+        content.addView(settingRow("Reset only savings goals",
+                "Set goal progress to zero but archive previous saved amounts",
+                UiKit.AMBER, this::confirmResetGoals));
+        content.addView(UiKit.gap(this, 8));
+        content.addView(settingRow("Reset only envelopes",
+                "Restart budget progress without deleting transactions",
+                UiKit.AMBER, this::confirmResetBudgets));
+        content.addView(UiKit.gap(this, 8));
+        content.addView(settingRow("Clear transaction history", "Permanent deletion. Consider exporting a backup first.",
                 UiKit.RED, this::confirmClearTransactions));
 
         content.addView(UiKit.gap(this, 20));
-        TextView version = UiKit.text(this, "SpendWatch Local 4.4  •  UAE-first  •  offline", 11, UiKit.MUTED, false);
+        TextView version = UiKit.text(this, "SpendWatch Local 4.5  •  UAE-first  •  offline", 11, UiKit.MUTED, false);
         version.setGravity(Gravity.CENTER);
         content.addView(version);
     }
@@ -1197,6 +1270,44 @@ public class MainActivity extends Activity {
                 .show();
     }
 
+    private void confirmResetGoals() {
+        new AlertDialog.Builder(this).setTitle("Reset savings goals only?")
+                .setMessage("Keep every goal and target, but set tracked saved amounts to zero. "
+                        + "Previous goal balances are archived in Reset History and your Excel workbook. "
+                        + "All transactions and envelopes are kept.")
+                .setPositiveButton("Reset goals", (d, w) -> {
+                    database.resetGoalsPreservingHistory();
+                    renderCurrent();
+                })
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    private void confirmResetBudgets() {
+        new AlertDialog.Builder(this).setTitle("Reset envelopes only?")
+                .setMessage("Restart the current envelope progress and remove carried balances. "
+                        + "Past transactions remain permanently in history and Excel. "
+                        + "Savings goals are unchanged.")
+                .setPositiveButton("Reset envelopes", (d, w) -> {
+                    database.resetBudgetsPreservingHistory();
+                    renderCurrent();
+                })
+                .setNegativeButton("Cancel", null).show();
+    }
+
+    private void chooseLedgerFile(boolean link) {
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        intent.putExtra(Intent.EXTRA_TITLE, link
+                ? "SpendWatch-Live-Ledger.xlsx"
+                : "SpendWatch-History-" + new SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                        .format(new Date()) + ".xlsx");
+        startActivityForResult(intent, link ? LINK_LEDGER_REQUEST : EXPORT_LEDGER_REQUEST);
+    }
+
     private void startBackupExport() {
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -1245,11 +1356,33 @@ public class MainActivity extends Activity {
                             "Backup failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
                 }
             }, "SpendWatchExport").start();
+        } else if (requestCode == LINK_LEDGER_REQUEST) {
+            try {
+                LocalLedgerExporter.linkSpreadsheet(this, file);
+                Toast.makeText(this, "Excel linked. The file will refresh automatically.",
+                        Toast.LENGTH_LONG).show();
+                renderCurrent();
+            } catch (Exception e) {
+                Toast.makeText(this, "Could not link Excel: " + e.getMessage(),
+                        Toast.LENGTH_LONG).show();
+            }
+        } else if (requestCode == EXPORT_LEDGER_REQUEST) {
+            new Thread(() -> {
+                try {
+                    LocalLedgerExporter.exportToUri(getApplicationContext(), file);
+                    runOnUiThread(() -> Toast.makeText(this,
+                            "Historical Excel workbook exported.", Toast.LENGTH_LONG).show());
+                } catch (Exception e) {
+                    runOnUiThread(() -> Toast.makeText(this,
+                            "Excel export failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            }, "SpendWatchExcelExport").start();
         } else if (requestCode == IMPORT_BACKUP_REQUEST) {
             new Thread(() -> {
                 try {
                     LocalBackupManager.importBackup(getApplicationContext(), file);
                     SpendWatchWidget.updateAll(getApplicationContext());
+                    LocalLedgerExporter.queueRefresh(getApplicationContext());
                     runOnUiThread(() -> {
                         Toast.makeText(this, "Backup restored successfully.", Toast.LENGTH_LONG).show();
                         renderCurrent();
