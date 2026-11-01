@@ -55,6 +55,7 @@ public class BankNotificationListener extends NotificationListenerService {
 
         NotificationHelper.notifyTransactionRecorded(this, transaction);
         SpendWatchWidget.updateAll(this);
+        ExcelHistory.schedule(this);
 
         Intent broadcast = new Intent(ACTION_TRANSACTION_RECORDED);
         broadcast.setPackage(getPackageName());
