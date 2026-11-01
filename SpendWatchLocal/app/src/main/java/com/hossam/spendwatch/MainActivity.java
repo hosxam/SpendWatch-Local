@@ -1318,17 +1318,30 @@ public class MainActivity extends Activity {
     }
 
     private void chooseLedgerFile(boolean link) {
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
-                Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
-                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        intent.putExtra(Intent.EXTRA_TITLE, link
-                ? "SpendWatch-Live-Ledger.xlsx"
-                : "SpendWatch-History-" + new SimpleDateFormat("yyyy-MM-dd", Locale.US)
-                        .format(new Date()) + ".xlsx");
-        startActivityForResult(intent, link ? LINK_LEDGER_REQUEST : EXPORT_LEDGER_REQUEST);
+        new AlertDialog.Builder(this)
+                .setTitle(link ? "Create an auto-updating Excel ledger?" : "Export historical Excel ledger?")
+                .setMessage("The spreadsheet will contain all recorded transactions across years, "
+                        + "including raw bank notification text. It is NOT encrypted. "
+                        + "Keep the file private. "
+                        + (link ? "SpendWatch will overwrite this selected workbook whenever "
+                        + "your local data changes; manual edits made in Excel will be overwritten." :
+                        "This is a one-time Excel export, not a backup import."))
+                .setPositiveButton("Choose file", (dialog, which) -> {
+                    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
+                            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                    intent.putExtra(Intent.EXTRA_TITLE, link
+                            ? "SpendWatch-Live-Ledger.xlsx"
+                            : "SpendWatch-History-" + new SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                                    .format(new Date()) + ".xlsx");
+                    startActivityForResult(intent,
+                            link ? LINK_LEDGER_REQUEST : EXPORT_LEDGER_REQUEST);
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
     private void startBackupExport() {
