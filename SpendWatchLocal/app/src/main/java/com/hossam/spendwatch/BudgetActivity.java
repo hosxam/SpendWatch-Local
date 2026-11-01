@@ -91,15 +91,15 @@ public class BudgetActivity extends Activity {
         root.addView(UiKit.gap(this, 12));
 
         LinearLayout cycleBar = new LinearLayout(this);
-        cycleBar.setOrientation(LinearLayout.HORIZONTAL);
-        cycleBar.setGravity(Gravity.CENTER_VERTICAL);
+        cycleBar.setOrientation(LinearLayout.VERTICAL);
+        cycleBar.setGravity(Gravity.START);
         TextView day = UiKit.pill(this, "CYCLE START: DAY " + database.getBudgetStartDay(), UiKit.CYAN);
         day.setOnClickListener(v -> showStartDayPicker());
         cycleBar.addView(day);
         TextView reset = UiKit.pill(this, "RESET ENVELOPES", UiKit.AMBER);
         LinearLayout.LayoutParams resetLp = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        resetLp.setMargins(UiKit.dp(this, 10), 0, 0, 0);
+        resetLp.setMargins(0, UiKit.dp(this, 9), 0, 0);
         reset.setLayoutParams(resetLp);
         reset.setOnClickListener(v -> confirmResetEnvelopes());
         cycleBar.addView(reset);
