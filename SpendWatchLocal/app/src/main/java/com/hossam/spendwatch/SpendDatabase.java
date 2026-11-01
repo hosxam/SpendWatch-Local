@@ -328,10 +328,13 @@ public class SpendDatabase extends SQLiteOpenHelper {
         if (id > 0) {
             int updated = db.update(TABLE_SAVINGS_GOALS, values, "id=?",
                     new String[]{Long.toString(id)});
+            if (updated > 0) signalLedgerChange();
             return updated > 0 ? id : -1;
         }
         values.put("saved_amount", 0d);
-        return db.insert(TABLE_SAVINGS_GOALS, null, values);
+        long inserted = db.insert(TABLE_SAVINGS_GOALS, null, values);
+        if (inserted > 0) signalLedgerChange();
+        return inserted;
     }
 
     public synchronized boolean changeSavingsGoalBalance(long id, double difference) {
@@ -356,6 +359,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
             if (db.update(TABLE_SAVINGS_GOALS, values, "id=?",
                     new String[]{Long.toString(id)}) != 1) return false;
             db.setTransactionSuccessful();
+            signalLedgerChange();
             return true;
         } finally {
             db.endTransaction();
@@ -363,8 +367,10 @@ public class SpendDatabase extends SQLiteOpenHelper {
     }
 
     public synchronized boolean deleteSavingsGoal(long id) {
-        return getWritableDatabase().delete(TABLE_SAVINGS_GOALS, "id=?",
+        boolean deleted = getWritableDatabase().delete(TABLE_SAVINGS_GOALS, "id=?",
                 new String[]{Long.toString(id)}) == 1;
+        if (deleted) signalLedgerChange();
+        return deleted;
     }
 
     public synchronized double getTotalSavedForGoals() {
@@ -496,6 +502,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
             cv.put("rollover_enabled", 0);
             cv.put("carry_amount", 0.0);
             cv.put("is_sinking", 0);
+            cv.put("sort_order", -1);
             db.insertWithOnConflict(TABLE_BUDGETS, null, cv, SQLiteDatabase.CONFLICT_IGNORE);
         }
     }
@@ -544,6 +551,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
         values.put(COLUMN_IS_IGNORED, transaction.isIgnored() ? 1 : 0);
         long id = db.insert(TABLE_TRANSACTIONS, null, values);
         transaction.setId(id);
+        if (id > 0) signalLedgerChange();
         return id;
     }
 
@@ -629,15 +637,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
         return cal.getTimeInMillis();
     }
 
-    private long startOfMonth() {
-        Calendar cal = Calendar.getInstance();
-        cal.set(Calendar.DAY_OF_MONTH, 1);
-        cal.set(Calendar.HOUR_OF_DAY, 0);
-        cal.set(Calendar.MINUTE, 0);
-        cal.set(Calendar.SECOND, 0);
-        cal.set(Calendar.MILLISECOND, 0);
-        return cal.getTimeInMillis();
-    }
+    private long startOfMonth() { return getCurrentCycleStart(); }
 
     public synchronized double getTotalSpentAedToday() {
         return getTotalSpentAedBetween(startOfToday(), System.currentTimeMillis());
@@ -666,25 +666,30 @@ public class SpendDatabase extends SQLiteOpenHelper {
         cv.put(COLUMN_CATEGORY, category);
         cv.put(COLUMN_TYPE, type);
         cv.put(COLUMN_IS_IGNORED, ignored ? 1 : 0);
-        return getWritableDatabase().update(
+        boolean changed = getWritableDatabase().update(
                 TABLE_TRANSACTIONS, cv, COLUMN_ID + "=?", new String[]{String.valueOf(id)}
         ) > 0;
+        if (changed) signalLedgerChange();
+        return changed;
     }
 
     public synchronized boolean deleteTransaction(long id) {
-        return getWritableDatabase().delete(
+        boolean changed = getWritableDatabase().delete(
                 TABLE_TRANSACTIONS, COLUMN_ID + "=?", new String[]{String.valueOf(id)}
         ) > 0;
+        if (changed) signalLedgerChange();
+        return changed;
     }
 
     public synchronized void clearAll() {
         getWritableDatabase().delete(TABLE_TRANSACTIONS, null, null);
+        signalLedgerChange();
     }
 
     private List<BudgetEnvelope> getBudgetsRaw() {
         List<BudgetEnvelope> list = new ArrayList<>();
         Cursor c = getReadableDatabase().query(
-                TABLE_BUDGETS, null, null, null, null, null, "is_sinking ASC, name ASC"
+                TABLE_BUDGETS, null, null, null, null, null, "sort_order ASC, id ASC"
         );
         try {
             while (c.moveToNext()) {
@@ -717,69 +722,66 @@ public class SpendDatabase extends SQLiteOpenHelper {
         cv.put("is_sinking", b.isSinkingFund() ? 1 : 0);
         if (b.getId() > 0) {
             getWritableDatabase().update(TABLE_BUDGETS, cv, "id=?", new String[]{String.valueOf(b.getId())});
+            signalLedgerChange();
             return b.getId();
         }
-        return getWritableDatabase().insertWithOnConflict(TABLE_BUDGETS, null, cv, SQLiteDatabase.CONFLICT_REPLACE);
+        Cursor max = getReadableDatabase().rawQuery(
+                "SELECT COALESCE(MAX(sort_order),0)+1 FROM " + TABLE_BUDGETS, null);
+        try { if (max.moveToFirst()) cv.put("sort_order", max.getInt(0)); }
+        finally { max.close(); }
+        long id = getWritableDatabase().insertWithOnConflict(
+                TABLE_BUDGETS, null, cv, SQLiteDatabase.CONFLICT_IGNORE);
+        if (id > 0) signalLedgerChange();
+        return id;
     }
 
     public synchronized boolean deleteBudget(long id) {
-        return getWritableDatabase().delete(TABLE_BUDGETS, "id=?", new String[]{String.valueOf(id)}) > 0;
+        boolean deleted = getWritableDatabase().delete(TABLE_BUDGETS, "id=?", new String[]{String.valueOf(id)}) > 0;
+        if (deleted) signalLedgerChange();
+        return deleted;
     }
 
     public synchronized double getSpentForCategoryThisMonth(String category) {
-        return getSpentForCategoryBetween(category, startOfMonth(), System.currentTimeMillis());
+        long from = Math.max(getCurrentCycleStart(),
+                (long) getSettingDouble("budget_reset_at", 0));
+        return getSpentForCategoryBetween(category, from, System.currentTimeMillis());
     }
 
     private void ensureMonthlyRollover() {
-        Calendar now = Calendar.getInstance();
-        int currentYm = now.get(Calendar.YEAR) * 100 + (now.get(Calendar.MONTH) + 1);
-        int lastYm = (int) getSettingDouble("last_rollover_month", 0);
-        if (lastYm == 0) {
-            setSetting("last_rollover_month", String.valueOf(currentYm));
+        long current = getCurrentCycleStart();
+        long last = (long) getSettingDouble("last_rollover_cycle_start", 0);
+        if (last == 0) {
+            setSetting("last_rollover_cycle_start", String.valueOf(current));
             return;
         }
-        if (lastYm == currentYm) return;
+        if (last >= current) return;
 
-        int year = lastYm / 100;
-        int month = lastYm % 100;
         Calendar cursor = Calendar.getInstance();
-        cursor.set(year, month - 1, 1, 0, 0, 0);
-        cursor.set(Calendar.MILLISECOND, 0);
-        cursor.add(Calendar.MONTH, 1);
-
-        Calendar currentStart = Calendar.getInstance();
-        currentStart.set(Calendar.DAY_OF_MONTH, 1);
-        currentStart.set(Calendar.HOUR_OF_DAY, 0);
-        currentStart.set(Calendar.MINUTE, 0);
-        currentStart.set(Calendar.SECOND, 0);
-        currentStart.set(Calendar.MILLISECOND, 0);
-
-        while (!cursor.after(currentStart)) {
-            Calendar prevStart = (Calendar) cursor.clone();
-            prevStart.add(Calendar.MONTH, -1);
-            Calendar prevEnd = (Calendar) cursor.clone();
-            prevEnd.add(Calendar.MILLISECOND, -1);
-
-            List<BudgetEnvelope> budgets = getBudgetsRaw();
-            for (BudgetEnvelope b : budgets) {
-                double newCarry = 0.0;
+        cursor.setTimeInMillis(last);
+        int safety = 0;
+        while (cursor.getTimeInMillis() < current && ++safety < 1200) {
+            long periodStart = cursor.getTimeInMillis();
+            cursor.add(Calendar.MONTH, 1);
+            long periodEnd = cursor.getTimeInMillis();
+            for (BudgetEnvelope b : getBudgetsRaw()) {
+                double carry = 0d;
                 if (b.isRolloverEnabled() || b.isSinkingFund()) {
-                    double spent = getSpentForCategoryBetween(
-                            b.getName(), prevStart.getTimeInMillis(), prevEnd.getTimeInMillis()
-                    );
-                    newCarry = Math.max(0.0, b.getMonthlyAmount() + b.getCarryAmount() - spent);
+                    long resetAt = (long) getSettingDouble("budget_reset_at", 0);
+                    long from = Math.max(periodStart, resetAt);
+                    double spent = from >= periodEnd ? 0 :
+                            getSpentForCategoryBetween(b.getName(), from, periodEnd - 1);
+                    carry = Math.max(0d, b.getMonthlyAmount() + b.getCarryAmount() - spent);
                 }
-                ContentValues cv = new ContentValues();
-                cv.put("carry_amount", newCarry);
-                getWritableDatabase().update(TABLE_BUDGETS, cv, "id=?",
+                ContentValues values = new ContentValues();
+                values.put("carry_amount", carry);
+                getWritableDatabase().update(TABLE_BUDGETS, values, "id=?",
                         new String[]{String.valueOf(b.getId())});
             }
-
-            int processedYm = cursor.get(Calendar.YEAR) * 100 + (cursor.get(Calendar.MONTH) + 1);
-            setSetting("last_rollover_month", String.valueOf(processedYm));
-            if (processedYm == currentYm) break;
-            cursor.add(Calendar.MONTH, 1);
+            setSetting("last_rollover_cycle_start", String.valueOf(periodEnd));
         }
+        long resetAt = (long) getSettingDouble("budget_reset_at", 0);
+        if (resetAt > 0 && resetAt < current) setSetting("budget_reset_at", "0");
+        signalLedgerChange();
     }
 
     public synchronized double getTotalSinkingMonthlyAllocation() {
@@ -893,8 +895,10 @@ public class SpendDatabase extends SQLiteOpenHelper {
 
     public synchronized double getProjectedMonthEndSpend() {
         Calendar now = Calendar.getInstance();
-        int day = Math.max(1, now.get(Calendar.DAY_OF_MONTH));
-        int daysInMonth = now.getActualMaximum(Calendar.DAY_OF_MONTH);
+        long start = getCurrentCycleStart();
+        long end = getCurrentCycleEnd();
+        int day = (int) Math.max(1, (System.currentTimeMillis() - start) / 86400000L + 1);
+        int daysInMonth = (int) Math.max(1, (end - start) / 86400000L);
         double spent = getTotalSpentAedThisMonth();
         double averageDaily = spent / day;
         int remainingDays = Math.max(0, daysInMonth - day);
@@ -904,8 +908,8 @@ public class SpendDatabase extends SQLiteOpenHelper {
     public synchronized String getTopBudgetPaceInsight() {
         List<BudgetEnvelope> budgets = getBudgets();
         Calendar now = Calendar.getInstance();
-        double monthProgress = (double) now.get(Calendar.DAY_OF_MONTH)
-                / (double) now.getActualMaximum(Calendar.DAY_OF_MONTH);
+        double monthProgress = Math.min(1d, (double) (System.currentTimeMillis() - getCurrentCycleStart())
+                / Math.max(1d, (getCurrentCycleEnd() - getCurrentCycleStart())));
         BudgetEnvelope worst = null;
         double worstGap = 0.0;
         double worstRatio = 0.0;
