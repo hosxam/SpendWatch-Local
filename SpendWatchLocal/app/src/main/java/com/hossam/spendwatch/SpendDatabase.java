@@ -835,13 +835,18 @@ public class SpendDatabase extends SQLiteOpenHelper {
         cv.put("active", bill.isActive() ? 1 : 0);
         if (bill.getId() > 0) {
             getWritableDatabase().update(TABLE_RECURRING, cv, "id=?", new String[]{String.valueOf(bill.getId())});
+            signalLedgerChange();
             return bill.getId();
         }
-        return getWritableDatabase().insert(TABLE_RECURRING, null, cv);
+        long id = getWritableDatabase().insert(TABLE_RECURRING, null, cv);
+        if (id > 0) signalLedgerChange();
+        return id;
     }
 
     public synchronized boolean deleteRecurringBill(long id) {
-        return getWritableDatabase().delete(TABLE_RECURRING, "id=?", new String[]{String.valueOf(id)}) > 0;
+        boolean changed = getWritableDatabase().delete(TABLE_RECURRING, "id=?", new String[]{String.valueOf(id)}) > 0;
+        if (changed) signalLedgerChange();
+        return changed;
     }
 
     public synchronized double getUpcomingRecurringAedThisMonth() {
@@ -889,6 +894,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
 
     public synchronized void setMonthlyIncome(double amount) {
         setSetting("monthly_income", String.format(Locale.US, "%.2f", Math.max(0.0, amount)));
+        signalLedgerChange();
     }
 
     public synchronized double getSafeToSpendRestOfMonth() {
