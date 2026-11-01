@@ -81,6 +81,8 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         renderCurrent();
+        // Reconcile any workbook updates missed while the process was stopped.
+        ExcelHistory.schedule(this);
         if (!receiverRegistered) {
             IntentFilter filter = new IntentFilter(BankNotificationListener.ACTION_TRANSACTION_RECORDED);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -1046,8 +1048,11 @@ public class MainActivity extends Activity {
                 UiKit.CYAN, () -> createExcel(false)));
         content.addView(UiKit.gap(this, 8));
         content.addView(settingRow("Live Excel history",
-                ExcelHistory.isEnabled(this) ? "Enabled — refresh on each new payment" :
-                        "Choose a workbook to keep updated automatically",
+                ExcelHistory.isEnabled(this) ? (
+                        database.getSetting("excel_last_error", "").isEmpty()
+                                ? "Enabled — refresh on each new payment"
+                                : "Sync failed — tap to choose another workbook"
+                ) : "Choose a workbook to keep updated automatically",
                 UiKit.GREEN, this::configureLiveExcel));
         content.addView(UiKit.gap(this, 8));
         content.addView(settingRow("Export full backup",
