@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Shader;
@@ -50,6 +51,8 @@ public class MainActivity extends Activity {
     private LinearLayout bottomNav;
     private int currentTab = 0;
     private boolean receiverRegistered = false;
+    private static final int EXPORT_BACKUP_REQUEST = 8051;
+    private static final int IMPORT_BACKUP_REQUEST = 8052;
 
     private final String[] NAV_LABELS = {"Home", "Budgets", "Goals", "Activity", "Insights", "Settings"};
     private final String[] NAV_ICONS = {"⌂", "◫", "◎", "⇅", "↗", "⚙"};
@@ -985,12 +988,20 @@ public class MainActivity extends Activity {
                 UiKit.GREEN, this::confirmForgetLearnedMerchants));
         content.addView(UiKit.gap(this, 8));
 
-        sectionRow("DATA", "", () -> {});
+        sectionRow("DATA PROTECTION", "", () -> {});
+        content.addView(settingRow("Export full backup",
+                "Save all transactions, budgets, goals and merchant rules to a ZIP",
+                UiKit.GREEN, this::startBackupExport));
+        content.addView(UiKit.gap(this, 8));
+        content.addView(settingRow("Restore backup",
+                "Recover your data after reinstalling or changing phones",
+                UiKit.CYAN, this::confirmBackupImport));
+        content.addView(UiKit.gap(this, 8));
         content.addView(settingRow("Clear transaction history", "Merchant preferences and budgets stay intact",
                 UiKit.RED, this::confirmClearTransactions));
 
         content.addView(UiKit.gap(this, 20));
-        TextView version = UiKit.text(this, "SpendWatch Local 4.2  •  UAE-first  •  offline", 11, UiKit.MUTED, false);
+        TextView version = UiKit.text(this, "SpendWatch Local 4.4  •  UAE-first  •  offline", 11, UiKit.MUTED, false);
         version.setGravity(Gravity.CENTER);
         content.addView(version);
     }
@@ -1184,6 +1195,74 @@ public class MainActivity extends Activity {
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    private void startBackupExport() {
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/zip");
+        String stamp = new SimpleDateFormat("yyyy-MM-dd-HHmm", Locale.US)
+                .format(new Date());
+        intent.putExtra(Intent.EXTRA_TITLE, "SpendWatch-backup-" + stamp + ".zip");
+        startActivityForResult(intent, EXPORT_BACKUP_REQUEST);
+    }
+
+    private void confirmBackupImport() {
+        new AlertDialog.Builder(this)
+                .setTitle("Restore saved financial data?")
+                .setMessage("Choose a SpendWatch ZIP backup. It will replace all current "
+                        + "transactions, budgets, goals, recurring bills and merchant preferences. "
+                        + "Export a backup of your current data first. This does not contact any server.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Choose backup", (dialog, which) -> {
+                    Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("application/zip");
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    startActivityForResult(intent, IMPORT_BACKUP_REQUEST);
+                })
+                .show();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        Uri file = data.getData();
+        if (requestCode == EXPORT_BACKUP_REQUEST) {
+            new Thread(() -> {
+                try {
+                    LocalBackupManager.exportBackup(getApplicationContext(), file);
+                    runOnUiThread(() -> new AlertDialog.Builder(this)
+                            .setTitle("Backup saved")
+                            .setMessage("Your full SpendWatch ZIP backup is saved. "
+                                    + "It contains sensitive financial information and is not encrypted. "
+                                    + "Keep it somewhere private, preferably also on your computer.")
+                            .setPositiveButton("OK", null)
+                            .show());
+                } catch (Exception e) {
+                    runOnUiThread(() -> Toast.makeText(this,
+                            "Backup failed: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            }, "SpendWatchExport").start();
+        } else if (requestCode == IMPORT_BACKUP_REQUEST) {
+            new Thread(() -> {
+                try {
+                    LocalBackupManager.importBackup(getApplicationContext(), file);
+                    SpendWatchWidget.updateAll(getApplicationContext());
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, "Backup restored successfully.", Toast.LENGTH_LONG).show();
+                        renderCurrent();
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(() -> new AlertDialog.Builder(this)
+                            .setTitle("Restore was not completed")
+                            .setMessage(e.getMessage())
+                            .setPositiveButton("OK", null)
+                            .show());
+                }
+            }, "SpendWatchImport").start();
+        }
     }
 
     private void confirmForgetLearnedMerchants() {
