@@ -716,8 +716,14 @@ public class SpendDatabase extends SQLiteOpenHelper {
         String currentId = currentCycleId();
         String previousId = getSetting("last_rollover_cycle", "");
         if (previousId.isEmpty()) {
-            setSetting("last_rollover_cycle", currentId);
-            return;
+            // Preserve the last known rollover marker from v4.4 installations.
+            String legacy = getSetting("last_rollover_month", "");
+            if (legacy.matches("[0-9]{6}")) {
+                previousId = legacy.substring(0, 4) + "-" + legacy.substring(4);
+            } else {
+                previousId = currentId;
+            }
+            setSetting("last_rollover_cycle", previousId);
         }
         if (previousId.equals(currentId)) return;
         Calendar prev = Calendar.getInstance();
