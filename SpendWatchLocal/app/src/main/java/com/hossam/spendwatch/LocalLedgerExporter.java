@@ -137,13 +137,16 @@ public final class LocalLedgerExporter {
             entry(zip, "xl/_rels/workbook.xml.rels", workbookRels());
             entry(zip, "xl/styles.xml", "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                     + "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
-                    + "<fonts count=\"1\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font></fonts>"
-                    + "<fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill>"
-                    + "<fill><patternFill patternType=\"gray125\"/></fill></fills>"
+                    + "<fonts count=\"2\"><font><sz val=\"11\"/><name val=\"Calibri\"/></font>"
+                    + "<font><b/><sz val=\"11\"/><color rgb=\"FFFFFFFF\"/><name val=\"Calibri\"/></font></fonts>"
+                    + "<fills count=\"3\"><fill><patternFill patternType=\"none\"/></fill>"
+                    + "<fill><patternFill patternType=\"gray125\"/></fill>"
+                    + "<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FF1D2C49\"/><bgColor indexed=\"64\"/></patternFill></fill></fills>"
                     + "<borders count=\"1\"><border/></borders>"
                     + "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>"
-                    + "<cellXfs count=\"2\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>"
-                    + "<xf numFmtId=\"2\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/></cellXfs>"
+                    + "<cellXfs count=\"3\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>"
+                    + "<xf numFmtId=\"2\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>"
+                    + "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"2\" borderId=\"0\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\"/></cellXfs>"
                     + "</styleSheet>");
 
             sheetStart(zip, 1);
@@ -304,8 +307,25 @@ public final class LocalLedgerExporter {
     }
     private static void sheetStart(ZipOutputStream zip, int i) throws Exception {
         zip.putNextEntry(new ZipEntry("xl/worksheets/sheet" + i + ".xml"));
+        String[] widths = i == 1 ? new String[]{"14","22","30","16","12","22","20","20","12","56"}
+                : i == 2 ? new String[]{"23","17","17","20","17","17","20"}
+                : i == 3 ? new String[]{"30","22","17","23","23","19","14","16","12"}
+                : i == 4 ? new String[]{"32","22","22","22","16"}
+                : new String[]{"24","18","32","24","20"};
+        StringBuilder columns = new StringBuilder("<cols>");
+        for (int col = 0; col < widths.length; col++) {
+            columns.append("<col min=\"").append(col + 1)
+                    .append("\" max=\"").append(col + 1)
+                    .append("\" width=\"").append(widths[col])
+                    .append("\" customWidth=\"1\"/>");
+        }
+        columns.append("</cols>");
         zip.write(("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
-                + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>")
+                + "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+                + "<sheetViews><sheetView workbookViewId=\"0\">"
+                + "<pane ySplit=\"1\" topLeftCell=\"A2\" activePane=\"bottomLeft\" state=\"frozen\"/>"
+                + "</sheetView></sheetViews>"
+                + columns + "<sheetData>")
                 .getBytes(StandardCharsets.UTF_8));
     }
     private static void sheetEnd(ZipOutputStream zip) throws Exception {
@@ -331,7 +351,8 @@ public final class LocalLedgerExporter {
                             .append("</v></c>");
                 }
             } else {
-                b.append("<c r=\"").append(address).append("\" t=\"inlineStr\"><is><t xml:space=\"preserve\">")
+                b.append("<c r=\"").append(address).append("\" s=\"").append(number == 1 ? 2 : 0)
+                        .append("\" t=\"inlineStr\"><is><t xml:space=\"preserve\">")
                         .append(xml(value == null ? "" : value.toString()))
                         .append("</t></is></c>");
             }
