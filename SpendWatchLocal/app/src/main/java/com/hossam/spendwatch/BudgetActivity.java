@@ -192,6 +192,30 @@ public class BudgetActivity extends Activity {
                     0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
             item.addView(visual);
 
+            LinearLayout reorder = new LinearLayout(this);
+            reorder.setOrientation(LinearLayout.HORIZONTAL);
+            reorder.setGravity(Gravity.END);
+            reorder.setPadding(0, UiKit.dp(this, 10), 0, 0);
+            TextView moveUp = UiKit.pill(this, "↑  MOVE UP", UiKit.CYAN);
+            moveUp.setOnClickListener(v -> {
+                if (database.moveBudget(b.getId(), -1)) {
+                    ExcelHistory.schedule(this);
+                    refresh();
+                }
+            });
+            TextView moveDown = UiKit.pill(this, "↓  MOVE DOWN", UiKit.PURPLE);
+            moveDown.setOnClickListener(v -> {
+                if (database.moveBudget(b.getId(), 1)) {
+                    ExcelHistory.schedule(this);
+                    refresh();
+                }
+            });
+            reorder.addView(moveUp);
+            LinearLayout.LayoutParams pad = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            pad.setMargins(UiKit.dp(this, 8),0,0,0);
+            reorder.addView(moveDown,pad);
+            item.addView(reorder);
             item.setOnClickListener(v -> showDialog(b));
             list.addView(item);
             list.addView(UiKit.gap(this, 9));
@@ -237,6 +261,7 @@ public class BudgetActivity extends Activity {
                             rollover.isChecked() || sinking.isChecked(),
                             existing == null ? 0 : existing.getCarryAmount(),
                             sinking.isChecked()));
+                    ExcelHistory.schedule(this);
                     refresh();
                 })
                 .setNegativeButton("Cancel", null);
