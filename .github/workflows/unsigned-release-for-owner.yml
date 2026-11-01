@@ -1,0 +1,49 @@
+name: Build unsigned release for owner offline signing
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'SpendWatchLocal/**'
+      - '.github/workflows/unsigned-release-for-owner.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android build tools
+        run: |
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.4'
+      - name: Build unsigned release APK
+        run: |
+          gradle -p SpendWatchLocal --stacktrace :app:assembleRelease
+          test -s SpendWatchLocal/app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Upload UNSIGNED release (not installable until signed)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpendWatch-UNSIGNED-RELEASE-NOT-INSTALLABLE
+          path: SpendWatchLocal/app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 14
+      - name: Upload public Android APK signer jar (no private keys)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Public-Android-APKSigner-Tool
+          path: /usr/local/lib/android/sdk/build-tools/34.0.0/lib/apksigner.jar
+          retention-days: 14
