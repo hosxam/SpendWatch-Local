@@ -273,6 +273,8 @@ public class BudgetActivity extends Activity {
                     try {
                         int value = Integer.parseInt(input.getText().toString().trim());
                         database.setBudgetStartDay(value);
+                        MonthlySummaryReceiver.scheduleNext(this);
+                        SpendWatchWidget.updateAll(this);
                         recreate();
                     } catch (Exception ex) {
                         Toast.makeText(this, "Choose a day from 1 to 31.", Toast.LENGTH_LONG).show();
