@@ -631,6 +631,7 @@ public class MainActivity extends Activity {
                             .setMessage("Only the goal tracker is deleted. No bank transactions are changed.")
                             .setPositiveButton("Delete", (dd, w) -> {
                                 database.deleteSavingsGoal(current.getId());
+                                ExcelHistory.schedule(this);
                                 renderCurrent();
                             })
                             .setNegativeButton("Cancel", null)
@@ -655,6 +656,7 @@ public class MainActivity extends Activity {
                         if (initialValue > 0 && !database.changeSavingsGoalBalance(id, initialValue))
                             throw new IllegalArgumentException();
                         dialog.dismiss();
+                        ExcelHistory.schedule(this);
                         renderCurrent();
                     } catch (Exception e) {
                         Toast.makeText(this, "Enter a goal name and valid AED amounts.",
@@ -683,6 +685,7 @@ public class MainActivity extends Activity {
                                     Toast.LENGTH_LONG).show();
                             return;
                         }
+                        ExcelHistory.schedule(this);
                         renderCurrent();
                     } catch (Exception e) {
                         Toast.makeText(this, "Enter a valid positive AED amount.",
@@ -1168,6 +1171,7 @@ public class MainActivity extends Activity {
                         t.setCategory(categories.get(category.getSelectedItemPosition()));
                         t.setTransactionType(types[type.getSelectedItemPosition()]);
                         database.insertTransaction(t);
+                        ExcelHistory.schedule(this);
                         renderCurrent();
                     } catch (Exception e) {
                         Toast.makeText(this, "Enter a valid amount.", Toast.LENGTH_SHORT).show();
@@ -1225,6 +1229,7 @@ public class MainActivity extends Activity {
                             types[type.getSelectedItemPosition()],
                             ignored.isChecked(),
                             learn.isChecked());
+                    if (saved) ExcelHistory.schedule(this);
                     if (saved && learn.isChecked()) {
                         Toast.makeText(this, "Saved. Merchant preference remembered when eligible.",
                                 Toast.LENGTH_SHORT).show();
@@ -1233,6 +1238,7 @@ public class MainActivity extends Activity {
                 })
                 .setNeutralButton("Delete", (d, w) -> {
                     database.deleteTransaction(t.getId());
+                    ExcelHistory.schedule(this);
                     renderCurrent();
                 })
                 .setNegativeButton("Cancel", null)
@@ -1385,6 +1391,7 @@ public class MainActivity extends Activity {
             new Thread(() -> {
                 try {
                     LocalBackupManager.importBackup(getApplicationContext(), file);
+                    ExcelHistory.schedule(this);
                     SpendWatchWidget.updateAll(getApplicationContext());
                     runOnUiThread(() -> {
                         Toast.makeText(this, "Backup restored successfully.", Toast.LENGTH_LONG).show();
@@ -1420,6 +1427,7 @@ public class MainActivity extends Activity {
                 .setMessage("This removes captured transactions from this phone. Budgets, recurring bills and settings remain.")
                 .setPositiveButton("Clear", (d, w) -> {
                     database.clearAll();
+                    ExcelHistory.schedule(this);
                     renderCurrent();
                 })
                 .setNegativeButton("Cancel", null)
@@ -1434,6 +1442,7 @@ public class MainActivity extends Activity {
         if (t == null) return;
         t.setTimestamp(System.currentTimeMillis());
         long id = database.insertTransaction(t);
+        if (id > 0) ExcelHistory.schedule(this);
         Toast.makeText(this, id > 0 ? "Sample Ruya purchase added." : "Duplicate sample ignored.", Toast.LENGTH_SHORT).show();
         renderCurrent();
     }
