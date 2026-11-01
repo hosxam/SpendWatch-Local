@@ -1,13 +1,7 @@
-name: Build SpendWatch APK
+name: Build SpendWatch Development APK (NOT UPDATEABLE)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - 'SpendWatchLocal/**'
-      - '.github/workflows/build-apk.yml'
   pull_request:
     branches:
       - main
@@ -47,10 +41,26 @@ jobs:
       - name: Build debug APK
         run: gradle -p SpendWatchLocal --stacktrace assembleDebug
 
-      - name: Upload APK
+      - name: Test signed release build using disposable CI-only key (DO NOT distribute)
+        shell: bash
+        run: |
+          set -eu
+          keytool -genkeypair -alias spendwatch -keyalg RSA -keysize 2048 -validity 10 \
+            -keystore "$RUNNER_TEMP/temporary-ci-key.p12" -storetype PKCS12 \
+            -storepass "CI_TEST_ONLY_DO_NOT_DISTRIBUTE_123456" \
+            -dname "CN=SpendWatch CI Temporary Test" -noprompt >/dev/null 2>&1
+          export SPENDWATCH_KEYSTORE_PATH="$RUNNER_TEMP/temporary-ci-key.p12"
+          export SPENDWATCH_KEYSTORE_PASSWORD="CI_TEST_ONLY_DO_NOT_DISTRIBUTE_123456"
+          gradle -p SpendWatchLocal --stacktrace :app:assembleRelease
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify \
+            SpendWatchLocal/app/build/outputs/apk/release/app-release.apk
+          rm -f "$RUNNER_TEMP/temporary-ci-key.p12"
+          rm -f SpendWatchLocal/app/build/outputs/apk/release/app-release.apk
+
+      - name: Upload DEVELOPMENT debug APK (NOT UPDATEABLE)
         uses: actions/upload-artifact@v4
         with:
-          name: SpendWatch-Local-APK
+          name: SpendWatch-DEVELOPMENT-DEBUG-NOT-UPDATEABLE
           path: SpendWatchLocal/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
