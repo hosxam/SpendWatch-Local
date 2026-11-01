@@ -70,13 +70,7 @@ jobs:
             grep -q "OK (" instrumentation.txt
 
             adb exec-out run-as com.hossam.spendwatch cat files/spendwatch-qa-ledger.xlsx > spendwatch-qa-ledger.xlsx
-            python3 - <<'PY'
-            import zipfile
-            with zipfile.ZipFile("spendwatch-qa-ledger.xlsx") as z:
-                assert z.testzip() is None
-                assert "xl/workbook.xml" in z.namelist()
-                assert all(f"xl/worksheets/sheet{i}.xml" in z.namelist() for i in range(1, 6))
-            PY
+            python3 -c "import zipfile; z=zipfile.ZipFile('spendwatch-qa-ledger.xlsx'); assert z.testzip() is None; assert 'xl/workbook.xml' in z.namelist(); assert all('xl/worksheets/sheet%d.xml' % i in z.namelist() for i in range(1,6))"
 
             adb shell cmd notification allow_listener com.hossam.spendwatch/com.hossam.spendwatch.BankNotificationListener
             sleep 2
