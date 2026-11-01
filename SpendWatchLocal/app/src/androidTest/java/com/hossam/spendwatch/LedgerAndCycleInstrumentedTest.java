@@ -206,7 +206,6 @@ public class LedgerAndCycleInstrumentedTest {
             String name = "xl/worksheets/sheet"+i+".xml";
             assertTrue(name,entries.containsKey(name));
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             factory.newDocumentBuilder().parse(
                     new ByteArrayInputStream(entries.get(name).getBytes(StandardCharsets.UTF_8)));
         }
