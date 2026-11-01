@@ -136,11 +136,11 @@ public class SpendDatabase extends SQLiteOpenHelper {
     }
 
     public synchronized int getBudgetStartDay() {
-        return Math.max(1, Math.min(28, (int) getSettingDouble("budget_start_day", 1)));
+        return Math.max(1, Math.min(31, (int) getSettingDouble("budget_start_day", 1)));
     }
 
     public synchronized void setBudgetStartDay(int day) {
-        if (day < 1 || day > 28) throw new IllegalArgumentException("Start day must be 1-28");
+        if (day < 1 || day > 31) throw new IllegalArgumentException("Start day must be 1-31");
         // Keep existing carry balances; only the period boundary changes.
         setSetting("budget_start_day", String.valueOf(day));
         setSetting("last_rollover_cycle_start", String.valueOf(getCycleStart(System.currentTimeMillis())));
@@ -151,19 +151,26 @@ public class SpendDatabase extends SQLiteOpenHelper {
         Calendar cal = Calendar.getInstance();
         cal.setTimeInMillis(timestamp);
         int day = getBudgetStartDay();
-        cal.set(Calendar.DAY_OF_MONTH, day);
+        cal.set(Calendar.DAY_OF_MONTH, Math.min(day, cal.getActualMaximum(Calendar.DAY_OF_MONTH)));
         cal.set(Calendar.HOUR_OF_DAY, 0);
         cal.set(Calendar.MINUTE, 0);
         cal.set(Calendar.SECOND, 0);
         cal.set(Calendar.MILLISECOND, 0);
-        if (timestamp < cal.getTimeInMillis()) cal.add(Calendar.MONTH, -1);
+        if (timestamp < cal.getTimeInMillis()) {
+            cal.set(Calendar.DAY_OF_MONTH, 1);
+            cal.add(Calendar.MONTH, -1);
+            cal.set(Calendar.DAY_OF_MONTH, Math.min(day, cal.getActualMaximum(Calendar.DAY_OF_MONTH)));
+        }
         return cal.getTimeInMillis();
     }
 
     public synchronized long getCycleEnd(long timestamp) {
         Calendar cal = Calendar.getInstance();
         cal.setTimeInMillis(getCycleStart(timestamp));
+        cal.set(Calendar.DAY_OF_MONTH, 1);
         cal.add(Calendar.MONTH, 1);
+        cal.set(Calendar.DAY_OF_MONTH, Math.min(getBudgetStartDay(),
+                cal.getActualMaximum(Calendar.DAY_OF_MONTH)));
         return cal.getTimeInMillis();
     }
 
@@ -756,13 +763,13 @@ public class SpendDatabase extends SQLiteOpenHelper {
         }
         if (last >= current) return;
 
-        Calendar cursor = Calendar.getInstance();
-        cursor.setTimeInMillis(last);
+        long cursor = last;
         int safety = 0;
-        while (cursor.getTimeInMillis() < current && ++safety < 1200) {
-            long periodStart = cursor.getTimeInMillis();
-            cursor.add(Calendar.MONTH, 1);
-            long periodEnd = cursor.getTimeInMillis();
+        while (cursor < current && ++safety < 1200) {
+            long periodStart = cursor;
+            long periodEnd = getCycleEnd(periodStart);
+            if (periodEnd <= periodStart) break;
+            cursor = periodEnd;
             for (BudgetEnvelope b : getBudgetsRaw()) {
                 double carry = 0d;
                 if (b.isRolloverEnabled() || b.isSinkingFund()) {
