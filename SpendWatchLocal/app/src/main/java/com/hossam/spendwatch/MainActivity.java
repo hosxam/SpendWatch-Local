@@ -53,6 +53,8 @@ public class MainActivity extends Activity {
     private boolean receiverRegistered = false;
     private static final int EXPORT_BACKUP_REQUEST = 8051;
     private static final int IMPORT_BACKUP_REQUEST = 8052;
+    private static final int EXPORT_EXCEL_REQUEST = 8053;
+    private static final int CONTINUOUS_EXCEL_REQUEST = 8054;
 
     private final String[] NAV_LABELS = {"Home", "Budgets", "Goals", "Activity", "Insights", "Settings"};
     private final String[] NAV_ICONS = {"⌂", "◫", "◎", "⇅", "↗", "⚙"};
@@ -79,6 +81,8 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         renderCurrent();
+        // Reconcile any workbook updates missed while the process was stopped.
+        ExcelHistory.schedule(this);
         if (!receiverRegistered) {
             IntentFilter filter = new IntentFilter(BankNotificationListener.ACTION_TRANSACTION_RECORDED);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -312,6 +316,15 @@ public class MainActivity extends Activity {
         stats2.addView(metricCard("INCOME", income > 0 ? money(income) : "Not set", "monthly", UiKit.GREEN), weightWithEnd());
         stats2.addView(metricCard("FORECAST", income > 0 ? money(projectedBalance) : "—", "month-end balance", UiKit.PURPLE), weightNoEnd());
         content.addView(stats2);
+        content.addView(UiKit.gap(this, 10));
+        LinearLayout budgetBalance = new LinearLayout(this);
+        budgetBalance.setOrientation(LinearLayout.HORIZONTAL);
+        budgetBalance.addView(metricCard("TOTAL SPENT", money(spent),
+                "current budget cycle", UiKit.RED), weightWithEnd());
+        budgetBalance.addView(metricCard("ENVELOPE BALANCE",
+                money(database.getTotalEnvelopeAvailable()),
+                "allocated minus spending", UiKit.GREEN), weightNoEnd());
+        content.addView(budgetBalance);
 
         content.addView(UiKit.gap(this, 20));
         sectionRow("LOCAL INTELLIGENCE", "INSIGHTS", () -> { currentTab = 4; renderBottomNav(); renderCurrent(); });
@@ -480,6 +493,7 @@ public class MainActivity extends Activity {
     private void renderGoals() {
         addHeader("BUILD YOUR FUTURE", "Savings goals",
                 "Targets you save towards, separate from the budgets you spend from.");
+        addOverallTotals();
 
         List<SavingsGoal> goals = database.getSavingsGoals();
         double saved = database.getTotalSavedForGoals();
@@ -620,6 +634,7 @@ public class MainActivity extends Activity {
                             .setMessage("Only the goal tracker is deleted. No bank transactions are changed.")
                             .setPositiveButton("Delete", (dd, w) -> {
                                 database.deleteSavingsGoal(current.getId());
+                                ExcelHistory.schedule(this);
                                 renderCurrent();
                             })
                             .setNegativeButton("Cancel", null)
@@ -644,6 +659,7 @@ public class MainActivity extends Activity {
                         if (initialValue > 0 && !database.changeSavingsGoalBalance(id, initialValue))
                             throw new IllegalArgumentException();
                         dialog.dismiss();
+                        ExcelHistory.schedule(this);
                         renderCurrent();
                     } catch (Exception e) {
                         Toast.makeText(this, "Enter a goal name and valid AED amounts.",
@@ -672,6 +688,7 @@ public class MainActivity extends Activity {
                                     Toast.LENGTH_LONG).show();
                             return;
                         }
+                        ExcelHistory.schedule(this);
                         renderCurrent();
                     } catch (Exception e) {
                         Toast.makeText(this, "Enter a valid positive AED amount.",
@@ -762,6 +779,14 @@ public class MainActivity extends Activity {
         second.addView(metricCard("SPENT", money(spent), "from envelopes", UiKit.RED), weightWithEnd());
         second.addView(metricCard("SINKING", money(database.getTotalSinkingMonthlyAllocation()), "monthly set-aside", UiKit.PURPLE), weightNoEnd());
         content.addView(second);
+        content.addView(UiKit.gap(this, 10));
+        LinearLayout totals = new LinearLayout(this);
+        totals.setOrientation(LinearLayout.HORIZONTAL);
+        totals.addView(metricCard("TOTAL SPENT", money(database.getTotalSpentAedThisMonth()),
+                "all categories", UiKit.RED), weightWithEnd());
+        totals.addView(metricCard("TOTAL BALANCE", money(database.getTotalEnvelopeAvailable()),
+                "remaining envelopes", UiKit.GREEN), weightNoEnd());
+        content.addView(totals);
 
         content.addView(UiKit.gap(this, 18));
         LinearLayout actions = new LinearLayout(this);
@@ -790,8 +815,22 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void addOverallTotals() {
+        LinearLayout totals = new LinearLayout(this);
+        totals.setOrientation(LinearLayout.HORIZONTAL);
+        totals.addView(metricCard("TOTAL SPENT",
+                money(database.getTotalSpentAedThisMonth()), "current cycle",
+                UiKit.RED), weightWithEnd());
+        totals.addView(metricCard("BALANCE LEFT",
+                money(database.getTotalEnvelopeAvailable()), "all envelopes",
+                UiKit.GREEN), weightNoEnd());
+        content.addView(totals);
+        content.addView(UiKit.gap(this, 16));
+    }
+
     private void renderTransactions() {
         addHeader("LEDGER", "Activity", "Every captured expense, transfer, income event and refund in one clean timeline.");
+        addOverallTotals();
 
         List<Transaction> txs = database.getAllTransactions();
         int expenseCount = 0, incomeCount = 0, transferCount = 0;
@@ -847,6 +886,7 @@ public class MainActivity extends Activity {
 
     private void renderInsights() {
         addHeader("LOCAL INTELLIGENCE", "Insights", "Fast financial signals calculated entirely on-device from your own activity.");
+        addOverallTotals();
 
         double income = database.getMonthlyIncome();
         double spent = database.getTotalSpentAedThisMonth();
@@ -971,6 +1011,20 @@ public class MainActivity extends Activity {
                 () -> startActivity(new Intent(this, RecurringActivity.class))));
 
         content.addView(UiKit.gap(this, 18));
+        content.addView(UiKit.gap(this, 18));
+        sectionRow("BUDGET CYCLE & RESETS", "", () -> {});
+        content.addView(settingRow("Budget cycle starts", "Day " + database.getCycleStartDay()
+                + " of each month (1–31, clamped)", UiKit.CYAN, this::showCycleStartPicker));
+        content.addView(UiKit.gap(this, 8));
+        content.addView(settingRow("Soft reset envelopes",
+                "Archive balances; restart this cycle without deleting transactions",
+                UiKit.AMBER, this::confirmResetEnvelopes));
+        content.addView(UiKit.gap(this, 8));
+        content.addView(settingRow("Soft reset savings goals",
+                "Archive goal progress and restart tracked savings separately",
+                UiKit.PURPLE, this::confirmResetGoals));
+
+        content.addView(UiKit.gap(this, 18));
         sectionRow("CAPTURE", "", () -> {});
         content.addView(settingRow("Notification access",
                 isNotificationServiceEnabled() ? "Enabled • listening locally" : "Disabled",
@@ -989,6 +1043,18 @@ public class MainActivity extends Activity {
         content.addView(UiKit.gap(this, 8));
 
         sectionRow("DATA PROTECTION", "", () -> {});
+        content.addView(settingRow("Export Excel (.xlsx)",
+                "All records, monthly history, envelopes, goals and reset archives",
+                UiKit.CYAN, () -> createExcel(false)));
+        content.addView(UiKit.gap(this, 8));
+        content.addView(settingRow("Live Excel history",
+                ExcelHistory.isEnabled(this) ? (
+                        database.getSetting("excel_last_error", "").isEmpty()
+                                ? "Enabled — refresh on each new payment"
+                                : "Sync failed — tap to choose another workbook"
+                ) : "Choose a workbook to keep updated automatically",
+                UiKit.GREEN, this::configureLiveExcel));
+        content.addView(UiKit.gap(this, 8));
         content.addView(settingRow("Export full backup",
                 "Save all transactions, budgets, goals and merchant rules to a ZIP",
                 UiKit.GREEN, this::startBackupExport));
@@ -1001,7 +1067,7 @@ public class MainActivity extends Activity {
                 UiKit.RED, this::confirmClearTransactions));
 
         content.addView(UiKit.gap(this, 20));
-        TextView version = UiKit.text(this, "SpendWatch Local 4.4  •  UAE-first  •  offline", 11, UiKit.MUTED, false);
+        TextView version = UiKit.text(this, "SpendWatch Local 4.5  •  UAE-first  •  offline", 11, UiKit.MUTED, false);
         version.setGravity(Gravity.CENTER);
         content.addView(version);
     }
@@ -1126,6 +1192,7 @@ public class MainActivity extends Activity {
                         t.setCategory(categories.get(category.getSelectedItemPosition()));
                         t.setTransactionType(types[type.getSelectedItemPosition()]);
                         database.insertTransaction(t);
+                        ExcelHistory.schedule(this);
                         renderCurrent();
                     } catch (Exception e) {
                         Toast.makeText(this, "Enter a valid amount.", Toast.LENGTH_SHORT).show();
@@ -1183,6 +1250,7 @@ public class MainActivity extends Activity {
                             types[type.getSelectedItemPosition()],
                             ignored.isChecked(),
                             learn.isChecked());
+                    if (saved) ExcelHistory.schedule(this);
                     if (saved && learn.isChecked()) {
                         Toast.makeText(this, "Saved. Merchant preference remembered when eligible.",
                                 Toast.LENGTH_SHORT).show();
@@ -1191,10 +1259,78 @@ public class MainActivity extends Activity {
                 })
                 .setNeutralButton("Delete", (d, w) -> {
                     database.deleteTransaction(t.getId());
+                    ExcelHistory.schedule(this);
                     renderCurrent();
                 })
                 .setNegativeButton("Cancel", null)
                 .show();
+    }
+
+    private void showCycleStartPicker() {
+        String[] days = new String[31];
+        for (int i=0;i<31;i++) days[i] = "Day " + (i+1);
+        new AlertDialog.Builder(this).setTitle("Budget cycle start day")
+                .setSingleChoiceItems(days, database.getCycleStartDay()-1,
+                        (dialog, which) -> {
+                            database.setCycleStartDay(which+1);
+                            ExcelHistory.schedule(this);
+                            SpendWatchWidget.updateAll(this);
+                            dialog.dismiss();
+                            renderCurrent();
+                        }).setNegativeButton("Cancel",null).show();
+    }
+
+    private void confirmResetEnvelopes() {
+        new AlertDialog.Builder(this).setTitle("Archive and reset envelopes?")
+                .setMessage("Save this cycle's spending and remaining balances in history. "
+                        + "Begin a fresh envelope cycle now. Transactions and savings goals remain untouched.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Archive and reset", (d,w) -> {
+                    database.softResetEnvelopes();
+                    ExcelHistory.schedule(this);
+                    SpendWatchWidget.updateAll(this);
+                    renderCurrent();
+                }).show();
+    }
+
+    private void confirmResetGoals() {
+        new AlertDialog.Builder(this).setTitle("Archive and reset savings goals?")
+                .setMessage("Keep your savings-goal targets and history, but reset tracked saved amounts "
+                        + "to zero. Envelopes and transactions stay unchanged.")
+                .setNegativeButton("Cancel",null)
+                .setPositiveButton("Archive and reset", (d,w) -> {
+                    database.softResetGoals();
+                    ExcelHistory.schedule(this);
+                    renderCurrent();
+                }).show();
+    }
+
+    private void createExcel(boolean continuous) {
+        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        intent.putExtra(Intent.EXTRA_TITLE, continuous ?
+                "SpendWatch-live-history.xlsx" : "SpendWatch-full-history.xlsx");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(intent,
+                continuous ? CONTINUOUS_EXCEL_REQUEST : EXPORT_EXCEL_REQUEST);
+    }
+
+    private void configureLiveExcel() {
+        if (!ExcelHistory.isEnabled(this)) {
+            createExcel(true);
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Live Excel history")
+                .setMessage("Your chosen workbook updates whenever SpendWatch saves a payment. "
+                        + "The complete history remains in the local database.")
+                .setPositiveButton("Choose new file", (d,w) -> createExcel(true))
+                .setNeutralButton("Stop syncing", (d,w) -> {
+                    ExcelHistory.setContinuousDestination(this, null);
+                    renderCurrent();
+                }).setNegativeButton("Cancel",null).show();
     }
 
     private void startBackupExport() {
@@ -1229,7 +1365,34 @@ public class MainActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
         Uri file = data.getData();
-        if (requestCode == EXPORT_BACKUP_REQUEST) {
+        if (requestCode == EXPORT_EXCEL_REQUEST || requestCode == CONTINUOUS_EXCEL_REQUEST) {
+            boolean continuous = requestCode == CONTINUOUS_EXCEL_REQUEST;
+            if (continuous) {
+                try {
+                    getContentResolver().takePersistableUriPermission(file,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                } catch (SecurityException e) {
+                    Toast.makeText(this, "This folder does not support persistent file access.",
+                            Toast.LENGTH_LONG).show();
+                    return;
+                }
+            }
+            new Thread(() -> {
+                try {
+                    ExcelHistory.export(getApplicationContext(), file);
+                    if (continuous) ExcelHistory.setContinuousDestination(this, file);
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, continuous ? "Live Excel enabled." :
+                                "Excel history saved.", Toast.LENGTH_LONG).show();
+                        renderCurrent();
+                    });
+                } catch (Exception e) {
+                    runOnUiThread(() -> new AlertDialog.Builder(this)
+                            .setTitle("Excel export failed").setMessage(e.getMessage())
+                            .setPositiveButton("OK",null).show());
+                }
+            }, "SpendWatchExcel").start();
+        } else if (requestCode == EXPORT_BACKUP_REQUEST) {
             new Thread(() -> {
                 try {
                     LocalBackupManager.exportBackup(getApplicationContext(), file);
@@ -1249,6 +1412,7 @@ public class MainActivity extends Activity {
             new Thread(() -> {
                 try {
                     LocalBackupManager.importBackup(getApplicationContext(), file);
+                    ExcelHistory.schedule(this);
                     SpendWatchWidget.updateAll(getApplicationContext());
                     runOnUiThread(() -> {
                         Toast.makeText(this, "Backup restored successfully.", Toast.LENGTH_LONG).show();
@@ -1284,6 +1448,7 @@ public class MainActivity extends Activity {
                 .setMessage("This removes captured transactions from this phone. Budgets, recurring bills and settings remain.")
                 .setPositiveButton("Clear", (d, w) -> {
                     database.clearAll();
+                    ExcelHistory.schedule(this);
                     renderCurrent();
                 })
                 .setNegativeButton("Cancel", null)
@@ -1298,6 +1463,7 @@ public class MainActivity extends Activity {
         if (t == null) return;
         t.setTimestamp(System.currentTimeMillis());
         long id = database.insertTransaction(t);
+        if (id > 0) ExcelHistory.schedule(this);
         Toast.makeText(this, id > 0 ? "Sample Ruya purchase added." : "Duplicate sample ignored.", Toast.LENGTH_SHORT).show();
         renderCurrent();
     }
