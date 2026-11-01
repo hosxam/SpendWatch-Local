@@ -604,13 +604,13 @@ public class SpendDatabase extends SQLiteOpenHelper {
         return spent;
     }
 
-    /** 1-28 only: clamps safely in February and every other month. */
+    /** 1-31; shorter months clamp to their last calendar day. */
     public synchronized int getCycleStartDay() {
-        return Math.max(1, Math.min(28, (int) getSettingDouble("cycle_start_day", 1)));
+        return Math.max(1, Math.min(31, (int) getSettingDouble("cycle_start_day", 1)));
     }
 
     public synchronized void setCycleStartDay(int day) {
-        if (day < 1 || day > 28) throw new IllegalArgumentException("Day must be 1-28");
+        if (day < 1 || day > 31) throw new IllegalArgumentException("Day must be 1-31");
         if (day == getCycleStartDay()) return;
         // Keep old rollovers from being reapplied under the new cycle definition.
         setSetting("cycle_start_day", Integer.toString(day));
@@ -724,7 +724,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
         try {
             String[] parts = previousId.split("-");
             prev.set(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]) - 1, 1, 0, 0, 0);
-            prev.set(Calendar.DAY_OF_MONTH, getCycleStartDay());
+            prev.set(Calendar.DAY_OF_MONTH, Math.min(getCycleStartDay(), prev.getActualMaximum(Calendar.DAY_OF_MONTH)));
             prev.set(Calendar.MILLISECOND, 0);
         } catch (Exception e) {
             setSetting("last_rollover_cycle", currentId);
@@ -734,7 +734,9 @@ public class SpendDatabase extends SQLiteOpenHelper {
         int guard = 0;
         while (prev.before(current) && guard++ < 120) {
             Calendar next = (Calendar) prev.clone();
+            next.set(Calendar.DAY_OF_MONTH, 1);
             next.add(Calendar.MONTH, 1);
+            next.set(Calendar.DAY_OF_MONTH, Math.min(getCycleStartDay(), next.getActualMaximum(Calendar.DAY_OF_MONTH)));
             long start = Math.max(prev.getTimeInMillis(),
                     (long) getSettingDouble("budget_reset_at", 0));
             long end = next.getTimeInMillis() - 1;
