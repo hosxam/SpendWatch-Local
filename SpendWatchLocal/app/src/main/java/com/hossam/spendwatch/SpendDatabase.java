@@ -863,15 +863,28 @@ public class SpendDatabase extends SQLiteOpenHelper {
     }
 
     public synchronized double getUpcomingRecurringAedThisMonth() {
-        int today = Calendar.getInstance().get(Calendar.DAY_OF_MONTH);
-        Cursor c = getReadableDatabase().rawQuery(
-                "SELECT COALESCE(SUM(amount),0) FROM " + TABLE_RECURRING
-                        + " WHERE active=1 AND currency='AED' AND due_day>=?",
-                new String[]{String.valueOf(today)}
-        );
-        double result = 0.0;
-        if (c.moveToFirst()) result = c.getDouble(0);
-        c.close();
+        // Include all scheduled due dates within the *custom budget cycle*,
+        // including bills in next calendar month when the cycle starts mid-month.
+        // This is an estimate: this MVP does not yet mark bills as paid.
+        long today = startOfToday();
+        long until = getCurrentCycleEnd();
+        double result = 0;
+        for (RecurringBill bill : getRecurringBills()) {
+            if (!bill.isActive() || !"AED".equalsIgnoreCase(bill.getCurrency())) continue;
+            for (int monthOffset = 0; monthOffset <= 2; monthOffset++) {
+                Calendar due = Calendar.getInstance();
+                due.set(Calendar.DAY_OF_MONTH, 1);
+                due.set(Calendar.HOUR_OF_DAY, 0);
+                due.set(Calendar.MINUTE, 0);
+                due.set(Calendar.SECOND, 0);
+                due.set(Calendar.MILLISECOND, 0);
+                due.add(Calendar.MONTH, monthOffset);
+                due.set(Calendar.DAY_OF_MONTH, Math.min(bill.getDueDay(),
+                        due.getActualMaximum(Calendar.DAY_OF_MONTH)));
+                long dueMillis = due.getTimeInMillis();
+                if (dueMillis >= today && dueMillis < until) result += bill.getAmount();
+            }
+        }
         return result;
     }
 
