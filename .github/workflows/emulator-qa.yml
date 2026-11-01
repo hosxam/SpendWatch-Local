@@ -69,6 +69,15 @@ jobs:
             adb shell am instrument -w com.hossam.spendwatch.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
             grep -q "OK (" instrumentation.txt
 
+            adb exec-out run-as com.hossam.spendwatch cat files/spendwatch-qa-ledger.xlsx > spendwatch-qa-ledger.xlsx
+            python3 - <<'PY'
+            import zipfile
+            with zipfile.ZipFile("spendwatch-qa-ledger.xlsx") as z:
+                assert z.testzip() is None
+                assert "xl/workbook.xml" in z.namelist()
+                assert all(f"xl/worksheets/sheet{i}.xml" in z.namelist() for i in range(1, 6))
+            PY
+
             adb shell cmd notification allow_listener com.hossam.spendwatch/com.hossam.spendwatch.BankNotificationListener
             sleep 2
             adb install -r SpendWatchLocal/qa-sender/build/outputs/apk/debug/qa-sender-debug.apk
@@ -117,6 +126,7 @@ jobs:
             spendwatch_after_first.db
             spendwatch_after_duplicate.db
             spendwatch_home.png
+            spendwatch-qa-ledger.xlsx
             SpendWatchLocal/app/build/reports/tests/testDebugUnitTest/**
             SpendWatchLocal/app/build/reports/androidTests/**
           if-no-files-found: warn
