@@ -144,7 +144,7 @@ public class LedgerAndCycleInstrumentedTest {
         assertEquals(totalBefore, db.getTotalSpentAedThisMonth(), 0.01);
         assertTrue(db.getResetHistoryRows().size() > 0);
 
-        insert(purchase("QA RESET SECOND", category, 11, System.currentTimeMillis()+1000));
+        insert(purchase("QA RESET SECOND", category, 11, System.currentTimeMillis()));
         assertEquals(11, db.getSpentForCategoryThisMonth(category), 0.01);
         assertEquals(totalBefore + 11, db.getTotalSpentAedThisMonth(), 0.01);
     }
