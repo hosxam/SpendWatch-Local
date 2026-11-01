@@ -153,6 +153,8 @@ public final class LocalLedgerExporter {
             };
             row(zip, 1, txColumns);
             int row = 2;
+            // Preserve oldest-first ledger order for easy long-term review in Excel.
+            java.util.Collections.reverse(transactions);
             for (Transaction t : transactions) {
                 rowMixed(zip, row++, new Object[]{
                         t.getId(), isoTime(t.getTimestamp()), t.getMerchant(), t.getAmount(),
