@@ -112,9 +112,22 @@ public class SpendDatabase extends SQLiteOpenHelper {
         createSavingsGoalsTable(db);
         createResetHistoryTable(db);
         if (oldVersion < 7) {
-            db.execSQL("ALTER TABLE " + TABLE_BUDGETS
-                    + " ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
-            db.execSQL("UPDATE " + TABLE_BUDGETS + " SET sort_order=id");
+            boolean hasOrder = false;
+            Cursor columns = db.rawQuery("PRAGMA table_info(" + TABLE_BUDGETS + ")", null);
+            try {
+                while (columns.moveToNext()) {
+                    if ("sort_order".equals(columns.getString(
+                            columns.getColumnIndexOrThrow("name")))) {
+                        hasOrder = true;
+                        break;
+                    }
+                }
+            } finally { columns.close(); }
+            if (!hasOrder) {
+                db.execSQL("ALTER TABLE " + TABLE_BUDGETS
+                        + " ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
+                db.execSQL("UPDATE " + TABLE_BUDGETS + " SET sort_order=id");
+            }
         }
         seedDefaultBudgets(db);
     }
