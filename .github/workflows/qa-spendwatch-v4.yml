@@ -98,13 +98,12 @@ jobs:
             grep -q "Transaction recorded" /tmp/notifications.txt
             grep -q "39.95" /tmp/notifications.txt
 
-            echo "=== Monthly summary receiver is retained ==="
-            adb shell dumpsys package com.hossam.spendwatch > /tmp/package.txt
-            grep -q "MonthlySummaryReceiver" /tmp/package.txt
-
-            echo "=== Widget provider registered ==="
-            adb shell dumpsys package com.hossam.spendwatch > /tmp/package.txt
-            grep -q "SpendWatchWidget" /tmp/package.txt
+            echo "=== Verify retained receivers in packaged Android manifest ==="
+            /usr/local/lib/android/sdk/build-tools/34.0.0/aapt dump xmltree SpendWatchLocal/app/build/outputs/apk/debug/app-debug.apk AndroidManifest.xml > /tmp/merged-manifest.txt
+            grep -q "MonthlySummaryReceiver" /tmp/merged-manifest.txt
+            grep -q "SpendWatchWidget" /tmp/merged-manifest.txt
+            grep -q "SmsTransactionReceiver" /tmp/merged-manifest.txt
+            if grep -q "SpendWatchNotificationListener" /tmp/merged-manifest.txt; then echo "FAIL: old notification listener retained"; exit 1; fi
 
             echo "ALL EMULATOR PROOFS PASSED"
 
