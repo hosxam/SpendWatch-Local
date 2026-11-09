@@ -5,6 +5,7 @@ import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Build;
 
 import java.util.Calendar;
@@ -12,12 +13,35 @@ import java.util.Calendar;
 /** Inexact but battery-friendly reminders for manually planned future expenses. */
 public final class OneTimeReminderReceiver extends BroadcastReceiver {
     private static final String EXTRA_ID = "commitment_id";
+    private static final String PREFS = "spendwatch_delivered_reminders_v1";
+
+    private static String key(long id) { return "payment_" + id; }
+
+    /**
+     * Use the reminder configuration as the delivery identity. A reminder is
+     * shown only once for a particular due date + lead time, even if the app
+     * is reopened or another payment is edited after it fires.
+     */
+    private static String fingerprint(OneTimeCommitment item) {
+        return item.getDueAt() + ":" + item.getRemindDays();
+    }
+
+    static boolean wasDelivered(Context context, OneTimeCommitment item) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        return fingerprint(item).equals(prefs.getString(key(item.getId()), null));
+    }
 
     @Override public void onReceive(Context context, Intent intent) {
         if (intent == null) return;
         long id = intent.getLongExtra(EXTRA_ID, -1L);
         OneTimeCommitment item = SpendDatabase.getInstance(context).getOneTimeCommitment(id);
-        if (item == null || !item.isPending()) return;
+        if (item == null || !item.isPending()
+                || wasDelivered(context, item)) return;
+        // Guard against outdated alarms dispatched after a reminder is edited.
+        if (reminderTimestamp(item) > System.currentTimeMillis()) return;
+        // Persist before notifying, so reopening the app never repeats it.
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putString(key(item.getId()), fingerprint(item)).commit();
         NotificationHelper.notifyOneTimeCommitment(context, item);
     }
 
@@ -50,7 +74,7 @@ public final class OneTimeReminderReceiver extends BroadcastReceiver {
         for (OneTimeCommitment item : SpendDatabase.getInstance(context).getOneTimeCommitments()) {
             PendingIntent p = pending(context, item.getId());
             manager.cancel(p);
-            if (!item.isPending()) continue;
+            if (!item.isPending() || wasDelivered(context, item)) continue;
             long when = reminderTimestamp(item);
             if (item.getDueAt() < now) continue;
             if (when <= now) when = now + 60_000L;
