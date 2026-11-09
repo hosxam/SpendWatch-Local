@@ -75,6 +75,8 @@ public final class ExcelHistory {
                         + "<Override PartName=\"/xl/worksheets/sheet3.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
                         + "<Override PartName=\"/xl/worksheets/sheet4.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
                         + "<Override PartName=\"/xl/worksheets/sheet5.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
+                        + "<Override PartName=\"/xl/worksheets/sheet6.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
+                        + "<Override PartName=\"/xl/worksheets/sheet7.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
                         + "</Types>");
                     entry(zip, "_rels/.rels",
                         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
@@ -88,13 +90,16 @@ public final class ExcelHistory {
                         + "<sheet name=\"Monthly Summary\" sheetId=\"2\" r:id=\"rId2\"/>"
                         + "<sheet name=\"Envelopes\" sheetId=\"3\" r:id=\"rId3\"/>"
                         + "<sheet name=\"Savings Goals\" sheetId=\"4\" r:id=\"rId4\"/>"
-                        + "<sheet name=\"Archive\" sheetId=\"5\" r:id=\"rId5\"/></sheets></workbook>");
+                        + "<sheet name=\"Archive\" sheetId=\"5\" r:id=\"rId5\"/>"
+                        + "<sheet name=\"Daily Summary\" sheetId=\"6\" r:id=\"rId6\"/>"
+                        + "<sheet name=\"Planned Payments\" sheetId=\"7\" r:id=\"rId7\"/>"
+                        + "</sheets></workbook>");
                     StringBuilder relationships = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
                         + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">");
-                    for (int i = 1; i <= 5; i++) relationships.append("<Relationship Id=\"rId")
+                    for (int i = 1; i <= 7; i++) relationships.append("<Relationship Id=\"rId")
                         .append(i).append("\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet")
                         .append(i).append(".xml\"/>");
-                    relationships.append("<Relationship Id=\"rId6\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>");
+                    relationships.append("<Relationship Id=\"rId8\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>");
                     entry(zip, "xl/_rels/workbook.xml.rels", relationships.toString());
                     entry(zip, "xl/styles.xml",
                         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
@@ -114,6 +119,8 @@ public final class ExcelHistory {
                     writeEnvelopes(zip, database);
                     writeGoals(zip, database);
                     writeArchive(zip, database);
+                    writeDaily(zip, database);
+                    writeOneTimeCommitments(zip, database);
                 }
             }
         }
@@ -245,4 +252,38 @@ public final class ExcelHistory {
         }finally{c.close();}
         end(zip);
     }
+    private static void writeDaily(ZipOutputStream zip, SpendDatabase db)
+            throws IOException {
+        begin(zip, 6, "Calendar Date", "Total AED Spending", "Transactions",
+                "Income AED", "Refunds AED");
+        String sql = "SELECT strftime('%Y-%m-%d', timestamp/1000, 'unixepoch','localtime') day,"
+                + " SUM(CASE WHEN is_ignored=0 AND currency='AED' AND transaction_type IN "
+                + "('card_purchase','pos','online','atm','direct_debit','fee','other_expense') THEN amount ELSE 0 END),"
+                + " COUNT(*),"
+                + " SUM(CASE WHEN is_ignored=0 AND currency='AED' AND transaction_type='income' THEN amount ELSE 0 END),"
+                + " SUM(CASE WHEN is_ignored=0 AND currency='AED' AND transaction_type='refund' THEN amount ELSE 0 END)"
+                + " FROM transactions GROUP BY day ORDER BY day ASC";
+        try (Cursor c = db.getReadableDatabase().rawQuery(sql, null)) {
+            int index = 2;
+            while (c.moveToNext()) row(zip, index++, c.getString(0), c.getDouble(1),
+                    c.getInt(2), c.getDouble(3), c.getDouble(4));
+        }
+        end(zip);
+    }
+
+    private static void writeOneTimeCommitments(ZipOutputStream zip, SpendDatabase db)
+            throws IOException {
+        begin(zip, 7, "ID", "Title", "Expected AED", "Due Date",
+                "Reminder", "Status");
+        int index = 2;
+        for (OneTimeCommitment item : db.getOneTimeCommitments()) {
+            String reminder = item.getRemindDays() < 0
+                    ? -item.getRemindDays() + " month(s) before"
+                    : item.getRemindDays() + " day(s) before";
+            row(zip, index++, item.getId(), item.getTitle(), item.getAmount(),
+                    date(item.getDueAt()), reminder, item.getStatus());
+        }
+        end(zip);
+    }
+
 }
