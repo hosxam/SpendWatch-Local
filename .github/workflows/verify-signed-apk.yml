@@ -46,7 +46,7 @@ jobs:
           import base64, hashlib, pathlib, struct
           original=pathlib.Path('unsigned/app-release-unsigned.apk').read_bytes()
           signing_block=base64.b64decode(pathlib.Path('release/v4.6/public-v2-signing-block.b64').read_text().strip())
-          eocd=original.rfind(b'PK\\x05\\x06')
+          eocd=original.rfind(bytes.fromhex('504b0506'))
           assert eocd >= 0
           central=struct.unpack_from('<I',original,eocd+16)[0]
           fixed=bytearray(original[eocd:])
