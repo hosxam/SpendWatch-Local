@@ -193,6 +193,10 @@ public class AudioRequirementsInstrumentedTest {
                         entries.contains("xl/worksheets/sheet"+i+".xml"));
             assertTrue(foundCommitment);
             assertTrue(foundTransaction);
+            // Keep a synthetic workbook for independent offline XLSX validation.
+            File qa = new File(context.getFilesDir(), "SpendWatch-v46-Sample.xlsx");
+            if (qa.exists() && !qa.delete()) throw new java.io.IOException("Cannot replace QA workbook");
+            assertTrue(output.renameTo(qa));
         } finally {output.delete();}
     }
 
