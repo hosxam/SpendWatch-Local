@@ -99,6 +99,7 @@ public class SpendWatchInstrumentedTest {
     @Test
     public void widgetProviderIsRegisteredAndRemoteViewsRenderCurrentTotals() {
         db.setMonthlyIncome(1000);
+        db.saveBudget(new BudgetEnvelope(0, "Groceries", 1000, false, 0, false));
         assertTrue(db.insertTransaction(tx(125, System.currentTimeMillis(), "CARREFOUR", "card_purchase", "Groceries")) > 0);
 
         AppWidgetManager manager = AppWidgetManager.getInstance(context);
