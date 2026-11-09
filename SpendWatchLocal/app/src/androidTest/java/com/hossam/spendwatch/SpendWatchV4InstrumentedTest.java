@@ -196,6 +196,7 @@ public class SpendWatchV4InstrumentedTest {
     public void homeWidget_rendersLiveSpendSafeAndBillsValues() {
         long now = System.currentTimeMillis();
         db.setMonthlyIncome(10000.00);
+        db.saveBudget(new BudgetEnvelope(0,"General",2000.00,false,0,false));
         assertTrue(db.insertTransaction(makeSpend(1250.00, now, "QA WIDGET")) > 0);
         db.saveRecurringBill(new RecurringBill(
                 0, "Widget Bill", 500.00, "AED", 31, "General", true));
@@ -213,7 +214,7 @@ public class SpendWatchV4InstrumentedTest {
         TextView bills = rendered[0].findViewById(R.id.widget_bills);
 
         assertEquals("AED 1,250", spent.getText().toString());
-        assertEquals("AED 8,250", safe.getText().toString());
+        assertEquals("AED 750", safe.getText().toString());
         assertEquals("AED 500", bills.getText().toString());
     }
 
