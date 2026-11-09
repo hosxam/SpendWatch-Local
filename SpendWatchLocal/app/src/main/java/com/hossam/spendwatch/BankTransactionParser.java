@@ -54,6 +54,12 @@ public class BankTransactionParser {
     );
 
     public static Transaction parseNotification(String title, String body, String packageName) {
+        // Defense-in-depth: marketing chat notifications must never become bank expenses.
+        if (packageName != null && (
+                packageName.equalsIgnoreCase("com.whatsapp")
+                || packageName.equalsIgnoreCase("com.whatsapp.w4b")
+                || packageName.equalsIgnoreCase("org.telegram.messenger")))
+            return null;
         String combined = clean((title == null ? "" : title) + " " + (body == null ? "" : body));
         if (combined.isEmpty()) return null;
 
