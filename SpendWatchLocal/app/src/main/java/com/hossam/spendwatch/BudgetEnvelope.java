@@ -7,6 +7,7 @@ public class BudgetEnvelope {
     private boolean rolloverEnabled;
     private double carryAmount;
     private boolean sinkingFund;
+    private boolean showSpentProgress;
 
     public BudgetEnvelope(long id, String name, double monthlyAmount, boolean rolloverEnabled,
                           double carryAmount, boolean sinkingFund) {
@@ -16,6 +17,13 @@ public class BudgetEnvelope {
         this.rolloverEnabled = rolloverEnabled;
         this.carryAmount = carryAmount;
         this.sinkingFund = sinkingFund;
+        this.showSpentProgress = false;
+    }
+
+    public BudgetEnvelope(long id, String name, double monthlyAmount, boolean rolloverEnabled,
+                          double carryAmount, boolean sinkingFund, boolean showSpentProgress) {
+        this(id, name, monthlyAmount, rolloverEnabled, carryAmount, sinkingFund);
+        this.showSpentProgress = showSpentProgress;
     }
 
     public long getId() { return id; }
@@ -24,6 +32,7 @@ public class BudgetEnvelope {
     public boolean isRolloverEnabled() { return rolloverEnabled; }
     public double getCarryAmount() { return carryAmount; }
     public boolean isSinkingFund() { return sinkingFund; }
+    public boolean isShowSpentProgress() { return showSpentProgress; }
     public double getEffectiveAmount() { return monthlyAmount + carryAmount; }
 
     public void setId(long id) { this.id = id; }
@@ -32,4 +41,5 @@ public class BudgetEnvelope {
     public void setRolloverEnabled(boolean rolloverEnabled) { this.rolloverEnabled = rolloverEnabled; }
     public void setCarryAmount(double carryAmount) { this.carryAmount = carryAmount; }
     public void setSinkingFund(boolean sinkingFund) { this.sinkingFund = sinkingFund; }
+    public void setShowSpentProgress(boolean showSpentProgress) { this.showSpentProgress = showSpentProgress; }
 }
