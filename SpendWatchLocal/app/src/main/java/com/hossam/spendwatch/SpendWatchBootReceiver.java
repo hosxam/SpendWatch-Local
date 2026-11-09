@@ -8,6 +8,7 @@ public class SpendWatchBootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         MonthlySummaryReceiver.scheduleNext(context);
+        OneTimeReminderReceiver.scheduleAll(context);
         SpendWatchWidget.updateAll(context);
     }
 }
