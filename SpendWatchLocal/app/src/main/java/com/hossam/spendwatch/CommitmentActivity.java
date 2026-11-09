@@ -26,11 +26,13 @@ public final class CommitmentActivity extends Activity {
     private SpendDatabase database;
     private LinearLayout content;
     private static final String[] REMINDERS = {
-            "On due date", "7 days before", "14 days before",
+            "No reminder", "On due date", "7 days before", "14 days before",
             "1 calendar month before", "2 calendar months before",
             "3 calendar months before"
     };
-    private static final int[] REMINDER_VALUES = {0, 7, 14, -1, -2, -3};
+    private static final int[] REMINDER_VALUES = {
+            OneTimeCommitment.NO_REMINDER, 0, 7, 14, -1, -2, -3
+    };
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -195,7 +197,7 @@ public final class CommitmentActivity extends Activity {
         if (old != null) {
             for(int i=0;i<REMINDER_VALUES.length;i++)
                 if(REMINDER_VALUES[i]==old.getRemindDays())reminder.setSelection(i);
-        } else reminder.setSelection(3);
+        } else reminder.setSelection(0);
         form.addView(reminder);
 
         AlertDialog dialog = new AlertDialog.Builder(this)
