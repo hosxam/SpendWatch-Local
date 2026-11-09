@@ -277,7 +277,9 @@ public final class ExcelHistory {
                 "Reminder", "Status");
         int index = 2;
         for (OneTimeCommitment item : db.getOneTimeCommitments()) {
-            String reminder = item.getRemindDays() < 0
+            String reminder = item.getRemindDays() == OneTimeCommitment.NO_REMINDER
+                    ? "None"
+                    : item.getRemindDays() < 0
                     ? -item.getRemindDays() + " month(s) before"
                     : item.getRemindDays() + " day(s) before";
             row(zip, index++, item.getId(), item.getTitle(), item.getAmount(),
