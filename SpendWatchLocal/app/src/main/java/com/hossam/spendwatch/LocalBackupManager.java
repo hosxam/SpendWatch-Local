@@ -183,7 +183,7 @@ public final class LocalBackupManager {
                     throw new IOException("Backup WAL is busy");
             }
             int version = database.getVersion();
-            if (version < 1 || version > 7)
+            if (version < 1 || version > 8)
                 throw new IOException("Unsupported database version: " + version);
             try (Cursor table = database.rawQuery(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='transactions'",
