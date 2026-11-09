@@ -54,10 +54,23 @@ public class BankTransactionParser {
     );
 
     public static Transaction parseNotification(String title, String body, String packageName) {
+        // Defense-in-depth: marketing chat notifications must never become bank expenses.
+        if (packageName != null && (
+                packageName.equalsIgnoreCase("com.whatsapp")
+                || packageName.equalsIgnoreCase("com.whatsapp.w4b")
+                || packageName.equalsIgnoreCase("org.telegram.messenger")))
+            return null;
         String combined = clean((title == null ? "" : title) + " " + (body == null ? "" : body));
         if (combined.isEmpty()) return null;
 
         String bank = detectUaeBank(title, packageName, combined);
+        // Some banking SMS alerts originate from short numeric codes. Recognize
+        // the exact observed Ruya purchase grammar without relying on sender ID.
+        if (bank == null && "SMS".equals(packageName)
+                && combined.matches("(?is).*debit card purchase of\\s+AED\\s+[0-9,.]+.*"
+                    + "from account ending with.*was done by card ending with.*"
+                    + "from [A-Za-z0-9 &.'_-]+ on \\d{1,2}/\\d{1,2}/\\d{4},"
+                    + " your available balance is AED\\s+[0-9,.]+.*")) bank = "Ruya";
         if (bank == null) return null;
 
         String lower = combined.toLowerCase(Locale.ROOT);

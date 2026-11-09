@@ -87,6 +87,25 @@ public class BankTransactionParserTest {
     }
 
     @Test
+    public void exactRuyaSmsWorksEvenWithNumericSender() {
+        String real = "Dear Customer, Debit Card Purchase of AED 39.95 from account ending with 1234 "
+                + "was done by Card ending with 5678 from TIM HORTONS on 08/10/2026, "
+                + "your available balance is AED 326.77";
+        Transaction t = BankTransactionParser.parseNotification("12345", real, "SMS");
+        assertNotNull(t);
+        assertEquals(39.95, t.getAmount(), 0.001);
+        assertEquals("TIM HORTONS", t.getMerchant());
+        assertEquals("Ruya", t.getBankSource());
+    }
+
+    @Test
+    public void unrelatedWhatsAppPromotionIsNotBankSms() {
+        assertNull(BankTransactionParser.parseNotification(
+                "WhatsApp", "Amazon promotional sale: Ruya purchase AED 60.00 today!",
+                "com.whatsapp"));
+    }
+
+    @Test
     public void rejectsDeclinedTransaction() {
         assertNull(BankTransactionParser.parseNotification(
                 "Ruya",

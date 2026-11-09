@@ -15,6 +15,7 @@ public final class NotificationHelper {
 
     public static final String CHANNEL_TRANSACTIONS = "transaction_confirmations";
     public static final String CHANNEL_SUMMARIES = "monthly_summaries";
+    public static final String CHANNEL_COMMITMENTS = "one_time_commitments";
 
     private NotificationHelper() {}
 
@@ -39,6 +40,12 @@ public final class NotificationHelper {
         );
         summaryChannel.setDescription("Simple monthly spending recaps.");
         nm.createNotificationChannel(summaryChannel);
+
+        NotificationChannel futurePayments = new NotificationChannel(
+                CHANNEL_COMMITMENTS, "Upcoming one-time payment reminders",
+                NotificationManager.IMPORTANCE_DEFAULT);
+        futurePayments.setDescription("Reminders before your planned one-time payments.");
+        nm.createNotificationChannel(futurePayments);
     }
 
     public static void notifyTransactionRecorded(Context context, Transaction transaction) {
@@ -123,6 +130,35 @@ public final class NotificationHelper {
                 .setAutoCancel(true);
 
         nm.notify(93001, builder.build());
+    }
+
+    public static void notifyOneTimeCommitment(Context context, OneTimeCommitment item) {
+        if (item == null || !item.isPending()) return;
+        ensureChannels(context);
+        if (!canNotify(context)) return;
+        NotificationManager manager = (NotificationManager)
+                context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager == null) return;
+
+        String text = String.format(Locale.US, "AED %,.2f • %s",
+                item.getAmount(), item.getTitle());
+        String title = "Upcoming one-time payment";
+        PendingIntent open = PendingIntent.getActivity(context, 32000,
+                new Intent(context, MainActivity.class)
+                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                | Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                PendingIntent.FLAG_UPDATE_CURRENT | immutableFlag());
+        android.app.Notification.Builder builder = Build.VERSION.SDK_INT >= 26
+                ? new android.app.Notification.Builder(context, CHANNEL_COMMITMENTS)
+                : new android.app.Notification.Builder(context);
+        builder.setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle(title)
+                .setContentText(text)
+                .setStyle(new android.app.Notification.BigTextStyle().bigText(text))
+                .setAutoCancel(true)
+                .setContentIntent(open);
+        manager.notify((int)(40000 + (item.getId() & 0x3fffffff)),
+                builder.build());
     }
 
     private static boolean canNotify(Context context) {

@@ -71,7 +71,8 @@ public class MainActivity extends Activity {
         database = SpendDatabase.getInstance(this);
         NotificationHelper.ensureChannels(this);
         MonthlySummaryReceiver.scheduleNext(this);
-        requestNotificationPermissionIfNeeded();
+        requestRequiredPermissionsIfNeeded();
+        OneTimeReminderReceiver.scheduleAll(this);
         configureWindow();
         buildShell();
     }
@@ -84,7 +85,7 @@ public class MainActivity extends Activity {
         // Reconcile any workbook updates missed while the process was stopped.
         ExcelHistory.schedule(this);
         if (!receiverRegistered) {
-            IntentFilter filter = new IntentFilter(BankNotificationListener.ACTION_TRANSACTION_RECORDED);
+            IntentFilter filter = new IntentFilter(SmsTransactionReceiver.ACTION_TRANSACTION_RECORDED);
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 registerReceiver(transactionReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
             } else {
@@ -103,12 +104,16 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void requestNotificationPermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT >= 33
-                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 4101);
-        }
+    private void requestRequiredPermissionsIfNeeded() {
+        List<String> required = new ArrayList<>();
+        if (Build.VERSION.SDK_INT >= 23 &&
+                checkSelfPermission(Manifest.permission.RECEIVE_SMS) != PackageManager.PERMISSION_GRANTED)
+            required.add(Manifest.permission.RECEIVE_SMS);
+        if (Build.VERSION.SDK_INT >= 33 &&
+                checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
+            required.add(Manifest.permission.POST_NOTIFICATIONS);
+        if (!required.isEmpty()) requestPermissions(
+                required.toArray(new String[0]), 4101);
     }
 
     private void configureWindow() {
@@ -237,17 +242,17 @@ public class MainActivity extends Activity {
         content.addView(brandRow);
         content.addView(UiKit.gap(this, 16));
 
-        if (!isNotificationServiceEnabled()) {
+        if (!isSmsCaptureEnabled()) {
             LinearLayout warning = UiKit.card(this, 16);
             warning.setBackground(UiKit.gradient(this, 22,
                     Color.rgb(55, 24, 43), Color.rgb(31, 23, 43)));
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            TextView copy = UiKit.text(this, "Automatic capture is off\nEnable notification access to track Ruya alerts.", 12, UiKit.TEXT, true);
+            TextView copy = UiKit.text(this, "Automatic SMS capture is off\nAllow SMS access to record bank transactions.", 12, UiKit.TEXT, true);
             row.addView(copy, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
             TextView enable = UiKit.pill(this, "ENABLE", UiKit.RED);
-            enable.setOnClickListener(v -> openNotificationSettings());
+            enable.setOnClickListener(v -> requestRequiredPermissionsIfNeeded());
             row.addView(enable);
             warning.addView(row);
             content.addView(warning);
@@ -434,9 +439,11 @@ public class MainActivity extends Activity {
         row.setGravity(Gravity.CENTER_VERTICAL);
 
         DonutProgressView donut = new DonutProgressView(this);
-        donut.configure(Math.max(0, remaining), total, "LEFT", accent);
+        boolean usedMode = b.isShowSpentProgress();
+        donut.configure(usedMode ? Math.max(0, spent) : Math.max(0, remaining),
+                total, usedMode ? "USED" : "LEFT", accent);
         donut.setContentDescription(b.getName() + ": " + donut.getDisplayedPercent()
-                + " percent remaining");
+                + (usedMode ? " percent spent" : " percent remaining"));
         row.addView(donut, new LinearLayout.LayoutParams(UiKit.dp(this, 108), UiKit.dp(this, 108)));
 
         LinearLayout details = new LinearLayout(this);
@@ -915,6 +922,51 @@ public class MainActivity extends Activity {
         row.addView(metricCard("FORECAST", money(forecast), "projected outflow", UiKit.PURPLE), weightNoEnd());
         content.addView(row);
 
+        content.addView(UiKit.gap(this, 22));
+        sectionRow("ONE-TIME FUTURE PAYMENTS", "MANAGE", () ->
+                startActivity(new Intent(this, CommitmentActivity.class)));
+        List<OneTimeCommitment> commitments = database.getOneTimeCommitments();
+        int listed = 0;
+        for (OneTimeCommitment item : commitments) {
+            if (!item.isPending()) continue;
+            LinearLayout card = UiKit.card(this, 15);
+            String due = new SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+                    .format(new Date(item.getDueAt()));
+            card.addView(UiKit.text(this,
+                    item.getTitle() + "  •  " + money(item.getAmount()),
+                    14, UiKit.TEXT, true));
+            card.addView(UiKit.gap(this, 6));
+            card.addView(UiKit.text(this,
+                    "Due " + due + (item.getDueAt() < System.currentTimeMillis()
+                            ? " • OVERDUE" : ""),
+                    12, item.getDueAt() < System.currentTimeMillis()
+                            ? UiKit.RED : UiKit.MUTED, false));
+            card.setOnClickListener(v ->
+                    startActivity(new Intent(this, CommitmentActivity.class)));
+            content.addView(card);
+            content.addView(UiKit.gap(this, 9));
+            if (++listed >= 4) break;
+        }
+        if (listed == 0) {
+            content.addView(UiKit.text(this,
+                    "No pending planned payments. Set an amount, due date and optional reminder.",
+                    12, UiKit.MUTED, false));
+        }
+
+        content.addView(UiKit.gap(this, 20));
+        sectionRow("LONG-TERM HISTORY", "OPEN HISTORY", () ->
+                startActivity(new Intent(this, HistoryActivity.class)));
+        List<String> monthSummaries = database.getHistoricalTotals(false, 5);
+        if (monthSummaries.isEmpty()) {
+            content.addView(UiKit.text(this, "No historical transactions yet.",
+                    12, UiKit.MUTED, false));
+        } else for (String line : monthSummaries) {
+            LinearLayout history = UiKit.card(this, 13);
+            history.addView(UiKit.text(this, line, 13, UiKit.TEXT, false));
+            content.addView(history);
+            content.addView(UiKit.gap(this, 7));
+        }
+
         content.addView(UiKit.gap(this, 20));
         sectionRow("CATEGORY PRESSURE", "BUDGETS", () -> { currentTab = 1; renderBottomNav(); renderCurrent(); });
 
@@ -1009,6 +1061,14 @@ public class MainActivity extends Activity {
         content.addView(UiKit.gap(this, 8));
         content.addView(settingRow("Recurring bills", database.getRecurringBills().size() + " configured", UiKit.AMBER,
                 () -> startActivity(new Intent(this, RecurringActivity.class))));
+        content.addView(UiKit.gap(this, 8));
+        content.addView(settingRow("One-time planned payments",
+                "Future dates, expected amounts, and reminders",
+                UiKit.PURPLE, () -> startActivity(new Intent(this, CommitmentActivity.class))));
+        content.addView(UiKit.gap(this, 8));
+        content.addView(settingRow("Spending history",
+                "Review older months and days without losing records",
+                UiKit.CYAN, () -> startActivity(new Intent(this, HistoryActivity.class))));
 
         content.addView(UiKit.gap(this, 18));
         content.addView(UiKit.gap(this, 18));
@@ -1026,10 +1086,11 @@ public class MainActivity extends Activity {
 
         content.addView(UiKit.gap(this, 18));
         sectionRow("CAPTURE", "", () -> {});
-        content.addView(settingRow("Notification access",
-                isNotificationServiceEnabled() ? "Enabled • listening locally" : "Disabled",
-                isNotificationServiceEnabled() ? UiKit.GREEN : UiKit.RED,
-                this::openNotificationSettings));
+        content.addView(settingRow("Bank SMS access",
+                isSmsCaptureEnabled() ? "Enabled • SMS messages only, no WhatsApp" :
+                        "Disabled • grant SMS permission to capture transactions",
+                isSmsCaptureEnabled() ? UiKit.GREEN : UiKit.RED,
+                this::requestSmsAccess));
         content.addView(UiKit.gap(this, 8));
         content.addView(settingRow("Test Ruya parser", "Inject one local sample purchase", UiKit.PURPLE, this::runSampleNotificationTest));
         content.addView(UiKit.gap(this, 8));
@@ -1067,7 +1128,7 @@ public class MainActivity extends Activity {
                 UiKit.RED, this::confirmClearTransactions));
 
         content.addView(UiKit.gap(this, 20));
-        TextView version = UiKit.text(this, "SpendWatch Local 4.5  •  UAE-first  •  offline", 11, UiKit.MUTED, false);
+        TextView version = UiKit.text(this, "SpendWatch Local 4.6  •  UAE-first  •  SMS only  •  offline", 11, UiKit.MUTED, false);
         version.setGravity(Gravity.CENTER);
         content.addView(version);
     }
@@ -1094,17 +1155,17 @@ public class MainActivity extends Activity {
         return row;
     }
 
-    private boolean isNotificationServiceEnabled() {
-        String flat = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
-        return flat != null && flat.contains(getPackageName());
+    private boolean isSmsCaptureEnabled() {
+        return Build.VERSION.SDK_INT < 23 ||
+                checkSelfPermission(Manifest.permission.RECEIVE_SMS)
+                        == PackageManager.PERMISSION_GRANTED;
     }
 
-    private void openNotificationSettings() {
-        try {
-            startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
-        } catch (Exception e) {
-            Toast.makeText(this, "Open Settings > Notification access and enable SpendWatch.", Toast.LENGTH_LONG).show();
-        }
+    private void requestSmsAccess() {
+        if (!isSmsCaptureEnabled()) requestRequiredPermissionsIfNeeded();
+        else Toast.makeText(this,
+                "Bank SMS access is enabled. WhatsApp and other app notifications are not read.",
+                Toast.LENGTH_LONG).show();
     }
 
     private void showIncomeDialog() {

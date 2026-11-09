@@ -37,7 +37,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
-        android:text="Spent this month"
+        android:text="Spent this cycle"
         android:textColor="#94A3B8"
         android:textSize="11sp" />
 
@@ -66,7 +66,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="SAFE TO SPEND"
+                android:text="ENVELOPES LEFT"
                 android:textColor="#94A3B8"
                 android:textSize="9sp"
                 android:textStyle="bold" />
@@ -91,7 +91,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="UPCOMING BILLS"
+                android:text="BILLS + PLANNED"
                 android:textColor="#94A3B8"
                 android:textSize="9sp"
                 android:textStyle="bold" />

@@ -162,9 +162,11 @@ public class BudgetActivity extends Activity {
             visual.setPadding(0, UiKit.dp(this, 13), 0, 0);
 
             DonutProgressView donut = new DonutProgressView(this);
-            donut.configure(Math.max(0, remaining), total, "LEFT", accent);
+            boolean usedMode = b.isShowSpentProgress();
+            donut.configure(usedMode ? Math.max(0, spent) : Math.max(0, remaining),
+                    total, usedMode ? "USED" : "LEFT", accent);
             donut.setContentDescription(b.getName() + ": " + donut.getDisplayedPercent()
-                    + " percent remaining");
+                    + (usedMode ? " percent spent" : " percent remaining"));
             visual.addView(donut, new LinearLayout.LayoutParams(
                     UiKit.dp(this, 108), UiKit.dp(this, 108)));
 
@@ -244,6 +246,21 @@ public class BudgetActivity extends Activity {
         sinking.setChecked(existing != null && existing.isSinkingFund());
         form.addView(sinking);
 
+        android.widget.RadioGroup percentageChoice = new android.widget.RadioGroup(this);
+        android.widget.RadioButton leftMode = new android.widget.RadioButton(this);
+        leftMode.setText("Percent LEFT — starts at 100% and falls with spending");
+        leftMode.setTextColor(UiKit.TEXT);
+        leftMode.setId(android.view.View.generateViewId());
+        percentageChoice.addView(leftMode);
+        android.widget.RadioButton usedMode = new android.widget.RadioButton(this);
+        usedMode.setText("Percent USED — starts at 0% and rises with spending");
+        usedMode.setTextColor(UiKit.TEXT);
+        usedMode.setId(android.view.View.generateViewId());
+        percentageChoice.addView(usedMode);
+        percentageChoice.check(existing != null && existing.isShowSpentProgress()
+                ? usedMode.getId() : leftMode.getId());
+        form.addView(percentageChoice);
+
         AlertDialog.Builder builder = new AlertDialog.Builder(this)
                 .setTitle(existing == null ? "New envelope" : "Edit envelope")
                 .setView(form)
@@ -260,7 +277,7 @@ public class BudgetActivity extends Activity {
                             n, a,
                             rollover.isChecked() || sinking.isChecked(),
                             existing == null ? 0 : existing.getCarryAmount(),
-                            sinking.isChecked()));
+                            sinking.isChecked(), usedMode.isChecked()));
                     ExcelHistory.schedule(this);
                     refresh();
                 })
@@ -269,6 +286,7 @@ public class BudgetActivity extends Activity {
         if (existing != null) {
             builder.setNeutralButton("Delete", (d, w) -> {
                 database.deleteBudget(existing.getId());
+                ExcelHistory.schedule(this);
                 refresh();
             });
         }

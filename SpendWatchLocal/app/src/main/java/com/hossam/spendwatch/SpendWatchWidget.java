@@ -40,13 +40,13 @@ public class SpendWatchWidget extends AppWidgetProvider {
     static RemoteViews buildViews(Context context, int widgetId) {
         SpendDatabase db = SpendDatabase.getInstance(context);
         double spent = db.getTotalSpentAedThisMonth();
-        double safe = db.getSafeToSpendRestOfMonth();
-        double income = db.getMonthlyIncome();
-        double bills = db.getUpcomingRecurringAedThisMonth();
+        double left = db.getTotalEnvelopeAvailable();
+        double bills = db.getUpcomingRecurringAedThisMonth()
+                + db.getUpcomingOneTimeCommitmentsTotal();
 
         RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_spendwatch);
         views.setTextViewText(R.id.widget_spent, money(spent));
-        views.setTextViewText(R.id.widget_safe, income > 0 ? money(safe) : "Set income");
+        views.setTextViewText(R.id.widget_safe, money(left));
         views.setTextViewText(R.id.widget_bills, money(bills));
 
         Intent open = new Intent(context, MainActivity.class);
