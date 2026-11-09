@@ -77,9 +77,15 @@ public final class OneTimeReminderReceiver extends BroadcastReceiver {
             manager.cancel(p);
             if (!item.isPending()
                     || item.getRemindDays() == OneTimeCommitment.NO_REMINDER
-                    || wasDelivered(context, item)) continue;
+                    || wasDelivered(context, item)) {
+                p.cancel();
+                continue;
+            }
             long when = reminderTimestamp(item);
-            if (item.getDueAt() < now) continue;
+            if (item.getDueAt() < now) {
+                p.cancel();
+                continue;
+            }
             if (when <= now) when = now + 60_000L;
             if (Build.VERSION.SDK_INT >= 23)
                 manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, when, p);
