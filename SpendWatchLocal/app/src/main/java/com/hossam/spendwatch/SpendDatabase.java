@@ -154,7 +154,9 @@ public class SpendDatabase extends SQLiteOpenHelper {
     public synchronized long saveOneTimeCommitment(long id, String title,
             double amount, long dueAt, int remindDays) {
         if (title == null || title.trim().isEmpty() || !Double.isFinite(amount)
-                || amount <= 0 || dueAt <= 0 || remindDays < -3 || remindDays > 365)
+                || amount <= 0 || dueAt <= 0
+                || ((remindDays < -3 || remindDays > 365)
+                    && remindDays != OneTimeCommitment.NO_REMINDER))
             return -1;
         android.content.ContentValues values = new android.content.ContentValues();
         values.put("title", title.trim());
