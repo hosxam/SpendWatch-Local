@@ -36,6 +36,7 @@ public final class OneTimeReminderReceiver extends BroadcastReceiver {
         long id = intent.getLongExtra(EXTRA_ID, -1L);
         OneTimeCommitment item = SpendDatabase.getInstance(context).getOneTimeCommitment(id);
         if (item == null || !item.isPending()
+                || item.getRemindDays() == OneTimeCommitment.NO_REMINDER
                 || wasDelivered(context, item)) return;
         // Guard against outdated alarms dispatched after a reminder is edited.
         if (reminderTimestamp(item) > System.currentTimeMillis()) return;
@@ -74,7 +75,9 @@ public final class OneTimeReminderReceiver extends BroadcastReceiver {
         for (OneTimeCommitment item : SpendDatabase.getInstance(context).getOneTimeCommitments()) {
             PendingIntent p = pending(context, item.getId());
             manager.cancel(p);
-            if (!item.isPending() || wasDelivered(context, item)) continue;
+            if (!item.isPending()
+                    || item.getRemindDays() == OneTimeCommitment.NO_REMINDER
+                    || wasDelivered(context, item)) continue;
             long when = reminderTimestamp(item);
             if (item.getDueAt() < now) continue;
             if (when <= now) when = now + 60_000L;
