@@ -5,6 +5,7 @@
     <!-- No INTERNET permission: all financial data remains local. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
 
     <application
         android:allowBackup="true"
@@ -30,15 +31,16 @@
             </intent-filter>
         </activity>
 
-        <service
-            android:name=".BankNotificationListener"
-            android:label="@string/notification_listener_label"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
-            android:exported="true">
+        <!-- SMS_ONLY: no notification-listener service, no WhatsApp access. -->
+        <receiver
+            android:name=".SmsTransactionReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
             <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
             </intent-filter>
-        </service>
+        </receiver>
+
 
         <receiver
             android:name=".SpendWatchWidget"
@@ -50,6 +52,8 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/spendwatch_widget_info" />
         </receiver>
+
+        <receiver android:name=".OneTimeReminderReceiver" android:exported="false" />
 
         <receiver
             android:name=".MonthlySummaryReceiver"
