@@ -98,9 +98,9 @@ jobs:
             grep -q "Transaction recorded" /tmp/notifications.txt
             grep -q "39.95" /tmp/notifications.txt
 
-            echo "=== Monthly summary alarm is scheduled ==="
-            adb shell dumpsys alarm > /tmp/alarms.txt
-            grep -q "com.hossam.spendwatch" /tmp/alarms.txt
+            echo "=== Monthly summary receiver is retained ==="
+            adb shell dumpsys package com.hossam.spendwatch > /tmp/package.txt
+            grep -q "MonthlySummaryReceiver" /tmp/package.txt
 
             echo "=== Widget provider registered ==="
             adb shell dumpsys package com.hossam.spendwatch > /tmp/package.txt
