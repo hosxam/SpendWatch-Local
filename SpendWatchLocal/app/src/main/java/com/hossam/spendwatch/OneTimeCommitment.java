@@ -2,6 +2,7 @@ package com.hossam.spendwatch;
 
 /** A future expected one-time payment; not a posted transaction. */
 public final class OneTimeCommitment {
+    public static final int NO_REMINDER = 999;
     private final long id;
     private final String title;
     private final double amount;
