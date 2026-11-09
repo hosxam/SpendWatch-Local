@@ -5,11 +5,12 @@ on:
     branches:
       - verify-signed-v46
     paths:
-      - 'release/v4.6/SpendWatch-Local-v4.6-SIGNED.apk.b64'
+      - 'release/v4.6/public-v2-signing-block.b64'
   workflow_dispatch:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   verify-signed-package:
@@ -20,6 +21,13 @@ jobs:
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
+      - name: Obtain exact tested production APK before signing
+        uses: actions/download-artifact@v4
+        with:
+          name: SpendWatch-v4.6-UNSIGNED-DO-NOT-INSTALL
+          run-id: 42589994408
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: unsigned
       - name: Set up Java 17
         uses: actions/setup-java@v5
         with:
@@ -29,12 +37,26 @@ jobs:
         run: |
           yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
           /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "emulator" "system-images;android-34;google_apis;x86_64"
-      - name: Decode signed release APK
+      - name: Reconstruct APK using PUBLIC precomputed v2 signing block
+        shell: bash
         run: |
-          set -eu
+          set -euo pipefail
           mkdir -p verified
-          base64 -d release/v4.6/SpendWatch-Local-v4.6-SIGNED.apk.b64 > verified/SpendWatch-Local-v4.6.apk
-          test -s verified/SpendWatch-Local-v4.6.apk
+          python3 - <<'PY'
+          import base64, hashlib, pathlib, struct
+          original=pathlib.Path('unsigned/app-release-unsigned.apk').read_bytes()
+          signing_block=base64.b64decode(pathlib.Path('release/v4.6/public-v2-signing-block.b64').read_text().strip())
+          eocd=original.rfind(b'PK\\x05\\x06')
+          assert eocd >= 0
+          central=struct.unpack_from('<I',original,eocd+16)[0]
+          fixed=bytearray(original[eocd:])
+          struct.pack_into('<I',fixed,16,central+len(signing_block))
+          signed=original[:central]+signing_block+original[central:eocd]+fixed
+          digest=hashlib.sha256(signed).hexdigest()
+          assert digest=='ef1a6b203d27eebd2819f4f845a53ce8c862d6188f97e473fc61d340c3b34907', digest
+          pathlib.Path('verified/SpendWatch-Local-v4.6.apk').write_bytes(signed)
+          print('Signed production APK SHA256:',digest)
+          PY
       - name: Verify official Android signature and package metadata
         shell: bash
         run: |
@@ -47,18 +69,14 @@ jobs:
           grep -q "versionCode='10'" verified/badging.txt
           grep -q "versionName='4.6.0'" verified/badging.txt
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$APK" | tee verified/permissions.txt
-          if grep -q 'android.permission.INTERNET' verified/permissions.txt; then
-            echo 'Unexpected INTERNET permission in signed APK'
-            exit 1
-          fi
+          if grep -q 'android.permission.INTERNET' verified/permissions.txt; then echo 'Unexpected INTERNET permission'; exit 1; fi
           grep -q 'android.permission.RECEIVE_SMS' verified/permissions.txt
-          echo 'Official Android signature and manifest checks passed'
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm || true
-      - name: Install and launch signed release on Android 14 emulator
+      - name: Install and launch signed production release on Android 14
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -73,7 +91,7 @@ jobs:
             adb shell am start -W -n com.hossam.spendwatch/.MainActivity
             adb shell pidof com.hossam.spendwatch
             echo 'SIGNED RELEASE INSTALLED AND LAUNCHED'
-      - name: Upload official verified signed APK
+      - name: Upload verified signed release
         if: always()
         uses: actions/upload-artifact@v4
         with:
