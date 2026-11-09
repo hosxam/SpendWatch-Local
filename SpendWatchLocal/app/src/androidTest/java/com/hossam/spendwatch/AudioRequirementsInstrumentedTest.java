@@ -259,4 +259,13 @@ public class AudioRequirementsInstrumentedTest {
         assertEquals(550,updated.getAmount(),.01);
         assertEquals(0,db.getUpcomingOneTimeCommitmentsTotal(),.01);
     }
+
+    @Test public void monthlyRecapAlarmCanBeScheduled() {
+        MonthlySummaryReceiver.scheduleNext(context);
+        android.app.PendingIntent alarm=android.app.PendingIntent.getBroadcast(
+                context,31001,new Intent(context,MonthlySummaryReceiver.class),
+                android.app.PendingIntent.FLAG_NO_CREATE
+                        | android.app.PendingIntent.FLAG_IMMUTABLE);
+        assertNotNull("Monthly summary should schedule a pending broadcast",alarm);
+    }
 }
