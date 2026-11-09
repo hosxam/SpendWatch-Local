@@ -69,14 +69,17 @@ jobs:
             adb shell am instrument -w com.hossam.spendwatch.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
             grep -q "OK (" instrumentation.txt
 
-            adb shell cmd notification allow_listener com.hossam.spendwatch/com.hossam.spendwatch.BankNotificationListener
-            sleep 2
-            adb install -r SpendWatchLocal/qa-sender/build/outputs/apk/debug/qa-sender-debug.apk
-            adb shell pm grant com.hossam.spendwatch.qasender android.permission.POST_NOTIFICATIONS
+            # Verify the release architecture: SMS permission, no broad notification listener.
+            adb shell pm grant com.hossam.spendwatch android.permission.RECEIVE_SMS
+            adb shell dumpsys package com.hossam.spendwatch > package_permissions.txt
+            grep -q "android.permission.RECEIVE_SMS" package_permissions.txt
 
             adb shell am start -W -n com.hossam.spendwatch/.MainActivity
             sleep 2
-            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity --es scenario real_ruya
+
+            # Real Android emulator SMS delivery; WhatsApp notifications cannot
+            # reach this receiver because no NotificationListenerService is registered.
+            adb emu sms send 15551230001 "Ruya: Dear Customer, Debit Card Purchase of AED 39.95 from account ending with 1234 was done by Card ending with 5678 from TIM HORTONS on 08/10/2026, your available balance is AED 326.77"
             sleep 8
 
             adb exec-out run-as com.hossam.spendwatch cat databases/spendwatch_uae.db > spendwatch_after_first.db
@@ -91,7 +94,7 @@ jobs:
             grep -q "Transaction recorded" notifications_after_first.txt
             grep -q "39.95" notifications_after_first.txt
 
-            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity --es scenario real_ruya
+            adb emu sms send 15551230001 "Ruya: Dear Customer, Debit Card Purchase of AED 39.95 from account ending with 1234 was done by Card ending with 5678 from TIM HORTONS on 08/10/2026, your available balance is AED 326.77"
             sleep 6
 
             adb exec-out run-as com.hossam.spendwatch cat databases/spendwatch_uae.db > spendwatch_after_duplicate.db
@@ -114,6 +117,7 @@ jobs:
             spendwatch_ui.xml
             spendwatch_ui_after_duplicate.xml
             notifications_after_first.txt
+            package_permissions.txt
             spendwatch_after_first.db
             spendwatch_after_duplicate.db
             spendwatch_home.png
