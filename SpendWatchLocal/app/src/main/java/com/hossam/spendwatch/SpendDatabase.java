@@ -164,7 +164,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
         SQLiteDatabase writable = getWritableDatabase();
         if (id > 0) {
             return writable.update(TABLE_COMMITMENTS, values,
-                    "id=? AND status='pending'", new String[]{Long.toString(id)}) == 1 ? id : -1;
+                    "id=?", new String[]{Long.toString(id)}) == 1 ? id : -1;
         }
         values.put("status", "pending");
         values.put("created_at", System.currentTimeMillis());
