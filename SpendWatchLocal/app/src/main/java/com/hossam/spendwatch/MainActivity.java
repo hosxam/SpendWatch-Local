@@ -922,6 +922,51 @@ public class MainActivity extends Activity {
         row.addView(metricCard("FORECAST", money(forecast), "projected outflow", UiKit.PURPLE), weightNoEnd());
         content.addView(row);
 
+        content.addView(UiKit.gap(this, 22));
+        sectionRow("ONE-TIME FUTURE PAYMENTS", "MANAGE", () ->
+                startActivity(new Intent(this, CommitmentActivity.class)));
+        List<OneTimeCommitment> commitments = database.getOneTimeCommitments();
+        int listed = 0;
+        for (OneTimeCommitment item : commitments) {
+            if (!item.isPending()) continue;
+            LinearLayout card = UiKit.card(this, 15);
+            String due = new SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+                    .format(new Date(item.getDueAt()));
+            card.addView(UiKit.text(this,
+                    item.getTitle() + "  •  " + money(item.getAmount()),
+                    14, UiKit.TEXT, true));
+            card.addView(UiKit.gap(this, 6));
+            card.addView(UiKit.text(this,
+                    "Due " + due + (item.getDueAt() < System.currentTimeMillis()
+                            ? " • OVERDUE" : ""),
+                    12, item.getDueAt() < System.currentTimeMillis()
+                            ? UiKit.RED : UiKit.MUTED, false));
+            card.setOnClickListener(v ->
+                    startActivity(new Intent(this, CommitmentActivity.class)));
+            content.addView(card);
+            content.addView(UiKit.gap(this, 9));
+            if (++listed >= 4) break;
+        }
+        if (listed == 0) {
+            content.addView(UiKit.text(this,
+                    "No pending planned payments. Set an amount, due date and optional reminder.",
+                    12, UiKit.MUTED, false));
+        }
+
+        content.addView(UiKit.gap(this, 20));
+        sectionRow("LONG-TERM HISTORY", "OPEN HISTORY", () ->
+                startActivity(new Intent(this, HistoryActivity.class)));
+        List<String> monthSummaries = database.getHistoricalTotals(false, 5);
+        if (monthSummaries.isEmpty()) {
+            content.addView(UiKit.text(this, "No historical transactions yet.",
+                    12, UiKit.MUTED, false));
+        } else for (String line : monthSummaries) {
+            LinearLayout history = UiKit.card(this, 13);
+            history.addView(UiKit.text(this, line, 13, UiKit.TEXT, false));
+            content.addView(history);
+            content.addView(UiKit.gap(this, 7));
+        }
+
         content.addView(UiKit.gap(this, 20));
         sectionRow("CATEGORY PRESSURE", "BUDGETS", () -> { currentTab = 1; renderBottomNav(); renderCurrent(); });
 
@@ -1016,6 +1061,14 @@ public class MainActivity extends Activity {
         content.addView(UiKit.gap(this, 8));
         content.addView(settingRow("Recurring bills", database.getRecurringBills().size() + " configured", UiKit.AMBER,
                 () -> startActivity(new Intent(this, RecurringActivity.class))));
+        content.addView(UiKit.gap(this, 8));
+        content.addView(settingRow("One-time planned payments",
+                "Future dates, expected amounts, and reminders",
+                UiKit.PURPLE, () -> startActivity(new Intent(this, CommitmentActivity.class))));
+        content.addView(UiKit.gap(this, 8));
+        content.addView(settingRow("Spending history",
+                "Review older months and days without losing records",
+                UiKit.CYAN, () -> startActivity(new Intent(this, HistoryActivity.class))));
 
         content.addView(UiKit.gap(this, 18));
         content.addView(UiKit.gap(this, 18));
