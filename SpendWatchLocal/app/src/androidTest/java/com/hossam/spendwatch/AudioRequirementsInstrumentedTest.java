@@ -268,4 +268,22 @@ public class AudioRequirementsInstrumentedTest {
                         | android.app.PendingIntent.FLAG_IMMUTABLE);
         assertNotNull("Monthly summary should schedule a pending broadcast",alarm);
     }
+
+    @Test public void optionalReminderCanBeDisabledWithoutLosingPayment() {
+        long due=System.currentTimeMillis()+100L*24*3600000;
+        long id=db.saveOneTimeCommitment(0,"No-alert commitment",120,due,
+                OneTimeCommitment.NO_REMINDER);
+        assertTrue(id>0);
+        OneTimeCommitment item=db.getOneTimeCommitment(id);
+        assertNotNull(item);
+        assertEquals(OneTimeCommitment.NO_REMINDER,item.getRemindDays());
+        OneTimeReminderReceiver.scheduleAll(context);
+        android.app.PendingIntent pending=android.app.PendingIntent.getBroadcast(
+                context,(int)(id&0x7fffffff),
+                new Intent(context,OneTimeReminderReceiver.class)
+                        .putExtra("commitment_id",id),
+                android.app.PendingIntent.FLAG_NO_CREATE
+                        | android.app.PendingIntent.FLAG_IMMUTABLE);
+        assertNull("Disabled reminders must not schedule an alarm",pending);
+    }
 }
