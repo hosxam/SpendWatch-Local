@@ -36,7 +36,10 @@ public final class OneTimeReminderReceiver extends BroadcastReceiver {
         c.set(Calendar.MINUTE, 0);
         c.set(Calendar.SECOND, 0);
         c.set(Calendar.MILLISECOND, 0);
-        c.add(Calendar.DAY_OF_MONTH, -item.getRemindDays());
+        if (item.getRemindDays() < 0)
+            c.add(Calendar.MONTH, item.getRemindDays());
+        else
+            c.add(Calendar.DAY_OF_MONTH, -item.getRemindDays());
         return c.getTimeInMillis();
     }
 
