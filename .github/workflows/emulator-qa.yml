@@ -70,17 +70,9 @@ jobs:
             grep -q "OK (" instrumentation.txt
 
             adb exec-out run-as com.hossam.spendwatch cat files/SpendWatch-v46-Sample.xlsx > SpendWatch-v46-Sample.xlsx
-            python3 - <<'PY'
-            import zipfile, xml.etree.ElementTree as ET
-            path="SpendWatch-v46-Sample.xlsx"
-            with zipfile.ZipFile(path) as workbook:
-                names=set(workbook.namelist())
-                assert all(f"xl/worksheets/sheet{i}.xml" in names for i in range(1,8))
-                for n in names:
-                    if n.endswith(".xml") or n.endswith(".rels"):
-                        ET.fromstring(workbook.read(n))
-            print("XLSX: seven sheets and XML validated")
-            PY
+            # The emulator runner executes each script line separately;
+            # use a single Python command rather than a multiline heredoc.
+            python3 -c 'import zipfile,xml.etree.ElementTree as ET; f=zipfile.ZipFile("SpendWatch-v46-Sample.xlsx"); names=set(f.namelist()); assert all("xl/worksheets/sheet%d.xml"%i in names for i in range(1,8)); [ET.fromstring(f.read(n)) for n in names if n.endswith((".xml",".rels"))]; print("XLSX: seven sheets and XML validated")'
 
             # Verify the release architecture: SMS permission, no broad notification listener.
             adb shell pm grant com.hossam.spendwatch android.permission.RECEIVE_SMS
