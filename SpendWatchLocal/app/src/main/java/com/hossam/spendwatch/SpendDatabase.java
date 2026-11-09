@@ -14,7 +14,7 @@ import java.util.Locale;
 public class SpendDatabase extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "spendwatch_uae.db";
-    private static final int DATABASE_VERSION = 7;
+    private static final int DATABASE_VERSION = 8;
 
     public static final String TABLE_TRANSACTIONS = "transactions";
     public static final String COLUMN_ID = "id";
@@ -33,6 +33,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
     private static final String TABLE_SETTINGS = "settings";
     private static final String TABLE_SAVINGS_GOALS = "savings_goals";
     private static final String TABLE_CYCLE_ARCHIVE = "cycle_archive";
+    private static final String TABLE_COMMITMENTS = "one_time_commitments";
     // Explicit user corrections only, separate from automatically guessed categories.
     private static final String TABLE_MERCHANT_RULES = "merchant_category_rules";
 
@@ -56,6 +57,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
         createMerchantRulesTable(db);
         createSavingsGoalsTable(db);
         createHistoryTables(db);
+        createCommitmentsTable(db);
         seedDefaultBudgets(db);
     }
 
@@ -107,6 +109,8 @@ public class SpendDatabase extends SQLiteOpenHelper {
         createV2Tables(db);
         createMerchantRulesTable(db);
         createSavingsGoalsTable(db);
+        createHistoryTables(db);
+        createCommitmentsTable(db);
         seedDefaultBudgets(db);
     }
 
@@ -124,10 +128,109 @@ public class SpendDatabase extends SQLiteOpenHelper {
                 + "details TEXT"
                 + ")");
         try {
+            db.execSQL("ALTER TABLE budgets ADD COLUMN progress_mode INTEGER NOT NULL DEFAULT 0");
+        } catch (android.database.SQLException alreadyExists) {
+            // Existing field.
+        }
+        try {
             db.execSQL("ALTER TABLE budgets ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 9999");
         } catch (android.database.SQLException alreadyExists) {
             // Column already exists in an updated installation.
         }
+    }
+
+    private void createCommitmentsTable(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_COMMITMENTS + " ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "title TEXT NOT NULL, "
+                + "amount REAL NOT NULL, "
+                + "due_at INTEGER NOT NULL, "
+                + "remind_days INTEGER NOT NULL DEFAULT 0, "
+                + "status TEXT NOT NULL DEFAULT 'pending', "
+                + "created_at INTEGER NOT NULL"
+                + ")");
+    }
+
+    public synchronized long saveOneTimeCommitment(long id, String title,
+            double amount, long dueAt, int remindDays) {
+        if (title == null || title.trim().isEmpty() || !Double.isFinite(amount)
+                || amount <= 0 || dueAt <= 0 || remindDays < 0 || remindDays > 365)
+            return -1;
+        android.content.ContentValues values = new android.content.ContentValues();
+        values.put("title", title.trim());
+        values.put("amount", amount);
+        values.put("due_at", dueAt);
+        values.put("remind_days", remindDays);
+        SQLiteDatabase writable = getWritableDatabase();
+        if (id > 0) {
+            return writable.update(TABLE_COMMITMENTS, values,
+                    "id=? AND status='pending'", new String[]{Long.toString(id)}) == 1 ? id : -1;
+        }
+        values.put("status", "pending");
+        values.put("created_at", System.currentTimeMillis());
+        return writable.insert(TABLE_COMMITMENTS, null, values);
+    }
+
+    public synchronized boolean setOneTimeCommitmentStatus(long id, String status) {
+        if (!"paid".equals(status) && !"pending".equals(status)
+                && !"cancelled".equals(status)) return false;
+        android.content.ContentValues values = new android.content.ContentValues();
+        values.put("status", status);
+        return getWritableDatabase().update(TABLE_COMMITMENTS, values, "id=?",
+                new String[]{Long.toString(id)}) == 1;
+    }
+
+    public synchronized boolean deleteOneTimeCommitment(long id) {
+        return getWritableDatabase().delete(TABLE_COMMITMENTS, "id=?",
+                new String[]{Long.toString(id)}) == 1;
+    }
+
+    public synchronized List<OneTimeCommitment> getOneTimeCommitments() {
+        List<OneTimeCommitment> result = new ArrayList<>();
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT id,title,amount,due_at,remind_days,status "
+                + "FROM " + TABLE_COMMITMENTS
+                + " ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END,"
+                + " due_at ASC, id ASC", null)) {
+            while (c.moveToNext()) {
+                result.add(new OneTimeCommitment(c.getLong(0), c.getString(1),
+                        c.getDouble(2), c.getLong(3), c.getInt(4), c.getString(5)));
+            }
+        }
+        return result;
+    }
+
+    public synchronized OneTimeCommitment getOneTimeCommitment(long id) {
+        for (OneTimeCommitment item : getOneTimeCommitments())
+            if (item.getId() == id) return item;
+        return null;
+    }
+
+    /** AED reservations for upcoming one-off bills; not actual bank balance. */
+    public synchronized double getUpcomingOneTimeCommitmentsTotal() {
+        double total = 0;
+        for (OneTimeCommitment c : getOneTimeCommitments()) {
+            if ("pending".equals(c.getStatus())) total += c.getAmount();
+        }
+        return total;
+    }
+
+    public synchronized List<String> getHistoricalTotals(boolean daily, int limit) {
+        List<String> totals = new ArrayList<>();
+        String date = daily ? "%Y-%m-%d" : "%Y-%m";
+        String sql = "SELECT strftime('" + date + "',timestamp/1000,'unixepoch','localtime') d,"
+                + " COUNT(*), COALESCE(SUM(amount),0)"
+                + " FROM " + TABLE_TRANSACTIONS
+                + " WHERE currency='AED' AND is_ignored=0 AND transaction_type IN "
+                + spendingTypesSql() + " GROUP BY d ORDER BY d DESC LIMIT ?";
+        try (Cursor cursor = getReadableDatabase().rawQuery(sql,
+                new String[]{Integer.toString(Math.max(1, Math.min(3660, limit)))})) {
+            while (cursor.moveToNext()) {
+                totals.add(String.format(Locale.US,"%s  •  AED %,.2f  •  %d transactions",
+                        cursor.getString(0), cursor.getDouble(2), cursor.getInt(1)));
+            }
+        }
+        return totals;
     }
 
     private void createSavingsGoalsTable(SQLiteDatabase db) {
@@ -539,7 +642,8 @@ public class SpendDatabase extends SQLiteOpenHelper {
                         c.getDouble(c.getColumnIndexOrThrow("monthly_amount")),
                         c.getInt(c.getColumnIndexOrThrow("rollover_enabled")) == 1,
                         c.getDouble(c.getColumnIndexOrThrow("carry_amount")),
-                        c.getInt(c.getColumnIndexOrThrow("is_sinking")) == 1
+                        c.getInt(c.getColumnIndexOrThrow("is_sinking")) == 1,
+                        c.getInt(c.getColumnIndexOrThrow("progress_mode")) == 1
                 ));
             }
         } finally {
@@ -560,6 +664,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
         cv.put("rollover_enabled", (b.isRolloverEnabled() || b.isSinkingFund()) ? 1 : 0);
         cv.put("carry_amount", Math.max(0.0, b.getCarryAmount()));
         cv.put("is_sinking", b.isSinkingFund() ? 1 : 0);
+        cv.put("progress_mode", b.isShowSpentProgress() ? 1 : 0);
         if (b.getId() > 0) {
             getWritableDatabase().update(TABLE_BUDGETS, cv, "id=?", new String[]{String.valueOf(b.getId())});
             return b.getId();
