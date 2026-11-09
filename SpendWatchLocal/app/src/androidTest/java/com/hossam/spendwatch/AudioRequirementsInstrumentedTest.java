@@ -224,4 +224,39 @@ public class AudioRequirementsInstrumentedTest {
             s.onActivity(a->assertNotNull(a.findViewById(android.R.id.content)));
         }
     }
+
+    @Test public void deliveredReminderDoesNotRepeatAndEditedScheduleCanRemindAgain() {
+        Calendar due=Calendar.getInstance();
+        due.add(Calendar.DAY_OF_MONTH,5);
+        long id=db.saveOneTimeCommitment(0,"Reminder regression",42,
+                due.getTimeInMillis(),-1);
+        assertTrue(id>0);
+        OneTimeCommitment first=db.getOneTimeCommitment(id);
+        assertFalse(OneTimeReminderReceiver.wasDelivered(context, first));
+        Intent reminder=new Intent(context,OneTimeReminderReceiver.class)
+                .putExtra("commitment_id",id);
+        new OneTimeReminderReceiver().onReceive(context,reminder);
+        assertTrue(OneTimeReminderReceiver.wasDelivered(context,first));
+        // Sending an identical alarm cannot clear the delivery fingerprint.
+        new OneTimeReminderReceiver().onReceive(context,reminder);
+        assertTrue(OneTimeReminderReceiver.wasDelivered(context,first));
+        due.add(Calendar.DAY_OF_MONTH,7);
+        assertEquals(id,db.saveOneTimeCommitment(id,"Reminder regression",42,
+                due.getTimeInMillis(),-1));
+        assertFalse(OneTimeReminderReceiver.wasDelivered(
+                context,db.getOneTimeCommitment(id)));
+    }
+
+    @Test public void paidCommitmentCanBeEditedWithoutBecomingPending() {
+        long due=System.currentTimeMillis()+50L*24*3600000;
+        long id=db.saveOneTimeCommitment(0,"Insurance",500,due,-2);
+        assertTrue(id>0);
+        assertTrue(db.setOneTimeCommitmentStatus(id,"paid"));
+        assertEquals(id,db.saveOneTimeCommitment(id,"Insurance corrected",550,due,-1));
+        OneTimeCommitment updated=db.getOneTimeCommitment(id);
+        assertNotNull(updated);
+        assertEquals("paid",updated.getStatus());
+        assertEquals(550,updated.getAmount(),.01);
+        assertEquals(0,db.getUpcomingOneTimeCommitmentsTotal(),.01);
+    }
 }
