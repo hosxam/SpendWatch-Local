@@ -1,0 +1,51 @@
+name: Build SpendWatch unsigned release for private signing
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build-unsigned-release.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  unsigned-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android SDK
+        run: |
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
+          /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+      - name: Set up Gradle 8.4
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.4'
+      - name: Compile unsigned production APK
+        run: gradle -p SpendWatchLocal --stacktrace :app:assembleRelease
+      - name: Check unsigned production APK
+        run: |
+          set -eu
+          APK=SpendWatchLocal/app/build/outputs/apk/release/app-release-unsigned.apk
+          test -s "$APK"
+          /usr/local/lib/android/sdk/build-tools/34.0.0/aapt dump badging "$APK" | grep "package: name='com.hossam.spendwatch'"
+      - name: Upload unsigned build for PRIVATE signing
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpendWatch-v4.6-UNSIGNED-DO-NOT-INSTALL
+          path: SpendWatchLocal/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 14
