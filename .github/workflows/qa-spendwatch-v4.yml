@@ -1,4 +1,4 @@
-name: Prove SpendWatch v4
+name: Prove SpendWatch SMS-only v4.6
 
 on:
   workflow_dispatch:
@@ -46,9 +46,9 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm || true
 
-      - name: Compile app, QA sender and tests
+      - name: Compile app and tests
         run: |
-          gradle -p SpendWatchLocal             :app:assembleDebug             :app:assembleDebugAndroidTest             :qa-sender:assembleDebug             :app:lintDebug
+          gradle -p SpendWatchLocal             :app:assembleDebug             :app:assembleDebugAndroidTest                         :app:lintDebug
 
       - name: Verify APK signature and privacy permissions
         run: |
@@ -61,6 +61,7 @@ jobs:
           fi
           grep -q "android.permission.POST_NOTIFICATIONS" /tmp/permissions.txt
           grep -q "android.permission.RECEIVE_BOOT_COMPLETED" /tmp/permissions.txt
+          grep -q "android.permission.RECEIVE_SMS" /tmp/permissions.txt
 
       - name: Run emulator proof suite
         uses: reactivecircus/android-emulator-runner@v2
@@ -75,29 +76,27 @@ jobs:
             adb install -r SpendWatchLocal/app/build/outputs/apk/debug/app-debug.apk
             adb install -r SpendWatchLocal/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell pm grant com.hossam.spendwatch android.permission.POST_NOTIFICATIONS
+            adb shell pm grant com.hossam.spendwatch android.permission.RECEIVE_SMS
 
             echo "=== Instrumentation suite ==="
             adb shell am instrument -w com.hossam.spendwatch.test/androidx.test.runner.AndroidJUnitRunner | tee /tmp/instrumentation.txt
             grep -q "OK (" /tmp/instrumentation.txt
 
-            echo "=== Real NotificationListenerService callback ==="
-            adb shell cmd notification allow_listener com.hossam.spendwatch/com.hossam.spendwatch.BankNotificationListener
+            echo "=== Real incoming SMS broadcast, no WhatsApp access ==="
             adb shell am force-stop com.hossam.spendwatch
             adb shell monkey -p com.hossam.spendwatch -c android.intent.category.LAUNCHER 1
             sleep 3
 
-            adb install -r SpendWatchLocal/qa-sender/build/outputs/apk/debug/qa-sender-debug.apk
-            adb shell pm grant com.hossam.spendwatch.qasender android.permission.POST_NOTIFICATIONS
-            adb shell am start -n com.hossam.spendwatch.qasender/.QaSenderActivity
-            sleep 5
+            adb emu sms send 15551230001 "Ruya: Dear Customer, Debit Card Purchase of AED 39.95 from account ending with 1234 was done by Card ending with 5678 from TIM HORTONS on 08/10/2026, your available balance is AED 326.77"
+            sleep 7
 
             adb exec-out run-as com.hossam.spendwatch cat databases/spendwatch_uae.db > /tmp/spendwatch.db
-            python3 -c "import sqlite3; con=sqlite3.connect('/tmp/spendwatch.db'); rows=con.execute('select amount,currency,merchant,bank_source,transaction_type from transactions order by id desc limit 5').fetchall(); print('Recorded rows:', rows); assert any(abs(r[0]-42.75)<0.001 and r[1]=='AED' and r[3]=='Ruya' and r[4] in ('card_purchase','pos','online') for r in rows), rows"
+            python3 -c "import sqlite3; con=sqlite3.connect('/tmp/spendwatch.db'); rows=con.execute('select amount,currency,merchant,bank_source,transaction_type from transactions order by id desc limit 5').fetchall(); print('Recorded rows:', rows); assert any(abs(r[0]-39.95)<0.001 and r[1]=='AED' and r[2]=='TIM HORTONS' and r[3]=='Ruya' and r[4]=='card_purchase' for r in rows), rows"
 
             echo "=== Immediate confirmation notification ==="
             adb shell dumpsys notification --noredact > /tmp/notifications.txt
             grep -q "Transaction recorded" /tmp/notifications.txt
-            grep -q "42.75" /tmp/notifications.txt
+            grep -q "39.95" /tmp/notifications.txt
 
             echo "=== Monthly summary alarm is scheduled ==="
             adb shell dumpsys alarm > /tmp/alarms.txt
