@@ -151,4 +151,46 @@ public final class BalanceSalaryInstrumentedTest {
                     assertNotNull(activity.findViewById(android.R.id.content)));
         }
     }
+
+    @Test public void excelIncludesSalaryCalendarAndBalanceCorrections() throws Exception {
+        Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+        assertTrue(db.setTrackedBalance(741.15, "Ruya"));
+        assertTrue(db.saveSalaryPlan(day(2027, 7, 19), 4250));
+        java.io.File output = new java.io.File(
+                context.getCacheDir(), "balance-salary-export-test.xlsx");
+        try {
+            ExcelHistory.export(context, android.net.Uri.fromFile(output));
+            boolean salary = false, balance = false;
+            int sheets = 0;
+            try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(
+                    new java.io.FileInputStream(output))) {
+                java.util.zip.ZipEntry entry;
+                while ((entry = zip.getNextEntry()) != null) {
+                    if (entry.getName().matches("xl/worksheets/sheet[1-9].xml"))
+                        sheets++;
+                    if (entry.getName().equals("xl/worksheets/sheet8.xml")
+                            || entry.getName().equals("xl/worksheets/sheet9.xml")) {
+                        java.io.ByteArrayOutputStream bytes =
+                                new java.io.ByteArrayOutputStream();
+                        byte[] buffer = new byte[4096];
+                        int n;
+                        while ((n = zip.read(buffer)) != -1)
+                            bytes.write(buffer, 0, n);
+                        String xml = bytes.toString("UTF-8");
+                        if (entry.getName().endsWith("sheet8.xml"))
+                            salary = xml.contains("2027-07") && xml.contains("4250");
+                        if (entry.getName().endsWith("sheet9.xml"))
+                            balance = xml.contains("Ruya") && xml.contains("741.15");
+                    }
+                    zip.closeEntry();
+                }
+            }
+            assertEquals(9, sheets);
+            assertTrue("Salary plan must be exported", salary);
+            assertTrue("Account balance correction must be exported", balance);
+        } finally {
+            output.delete();
+        }
+    }
+
 }
