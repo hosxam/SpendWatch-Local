@@ -282,15 +282,23 @@ public final class MoneyTrackerActivity extends Activity {
                                 Toast.LENGTH_SHORT).show();
                         return;
                     }
-                    if (previous != null
-                            && !previous.monthKey.equals(
-                                    SpendDatabase.salaryMonthKey(chosen.getTimeInMillis())))
-                        db.deleteSalaryPlan(previous.monthKey);
+                    String newMonth = SpendDatabase.salaryMonthKey(chosen.getTimeInMillis());
+                    if (previous != null && !previous.monthKey.equals(newMonth)) {
+                        for (SpendDatabase.SalaryPlan existing : db.getSalaryPlans()) {
+                            if (existing.monthKey.equals(newMonth)) {
+                                Toast.makeText(this, "A salary date already exists for that month.",
+                                        Toast.LENGTH_LONG).show();
+                                return;
+                            }
+                        }
+                    }
                     if (!db.saveSalaryPlan(chosen.getTimeInMillis(), value)) {
                         Toast.makeText(this, "Unable to save salary date.",
                                 Toast.LENGTH_LONG).show();
                         return;
                     }
+                    if (previous != null && !previous.monthKey.equals(newMonth))
+                        db.deleteSalaryPlan(previous.monthKey);
                     ExcelHistory.schedule(this);
                     dialog.dismiss();
                     refresh();
