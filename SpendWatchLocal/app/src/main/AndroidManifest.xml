@@ -15,6 +15,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.SpendWatch">
 
+        <activity android:name=".MoneyTrackerActivity" android:exported="false" />
         <activity android:name=".CommitmentActivity" android:exported="false" />
         <activity android:name=".HistoryActivity" android:exported="false" />
 
