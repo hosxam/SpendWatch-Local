@@ -226,10 +226,10 @@ public class SpendDatabase extends SQLiteOpenHelper {
                 + "'atm','direct_debit','fee','other_expense','transfer_sent')"
                 + " THEN -amount ELSE 0 END),0)"
                 + " FROM " + TABLE_TRANSACTIONS
-                + " WHERE id>? AND currency='AED' AND is_ignored=0" + bankFilter;
+                + " WHERE id>? AND timestamp>=? AND currency='AED' AND is_ignored=0" + bankFilter;
         String[] args = bank.isEmpty()
-                ? new String[]{Long.toString(anchor)}
-                : new String[]{Long.toString(anchor), bank};
+                ? new String[]{Long.toString(anchor), Long.toString(created)}
+                : new String[]{Long.toString(anchor), Long.toString(created), bank};
         double delta;
         try (Cursor c = db.rawQuery(query, args)) {
             delta = c.moveToFirst() ? c.getDouble(0) : 0d;
