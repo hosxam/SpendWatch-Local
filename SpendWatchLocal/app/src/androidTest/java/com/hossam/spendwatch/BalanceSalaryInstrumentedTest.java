@@ -72,6 +72,18 @@ public final class BalanceSalaryInstrumentedTest {
         // Other banks and ignored/foreign-currency entries do not affect Ruya.
         assertTrue(add("ENBD", "card_purchase", 800, false, "OTHER BANK") > 0);
         assertTrue(add("Ruya", "card_purchase", 100, true, "IGNORED TX") > 0);
+        // SMS inserted later with an earlier actual transaction date must not
+        // be deducted from a balance the user reconciled after that purchase.
+        Transaction delayed = new Transaction();
+        delayed.setCurrency("AED");
+        delayed.setAmount(25);
+        delayed.setMerchant("OLD DELAYED SMS");
+        delayed.setBankSource("Ruya");
+        delayed.setCategory("General");
+        delayed.setTransactionType("card_purchase");
+        delayed.setRawMessage("Old alert delivered after reconciliation");
+        delayed.setTimestamp(db.getTrackedBalance().recordedAt - 60_000L);
+        assertTrue(db.insertTransaction(delayed) > 0);
         assertEquals(835.25, db.getTrackedBalance().currentAmount, 0.001);
     }
 
