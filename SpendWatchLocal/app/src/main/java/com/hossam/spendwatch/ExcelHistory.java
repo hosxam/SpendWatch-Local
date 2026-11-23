@@ -77,6 +77,8 @@ public final class ExcelHistory {
                         + "<Override PartName=\"/xl/worksheets/sheet5.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
                         + "<Override PartName=\"/xl/worksheets/sheet6.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
                         + "<Override PartName=\"/xl/worksheets/sheet7.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
+                        + "<Override PartName=\"/xl/worksheets/sheet8.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
+                        + "<Override PartName=\"/xl/worksheets/sheet9.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
                         + "</Types>");
                     entry(zip, "_rels/.rels",
                         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
@@ -93,13 +95,15 @@ public final class ExcelHistory {
                         + "<sheet name=\"Archive\" sheetId=\"5\" r:id=\"rId5\"/>"
                         + "<sheet name=\"Daily Summary\" sheetId=\"6\" r:id=\"rId6\"/>"
                         + "<sheet name=\"Planned Payments\" sheetId=\"7\" r:id=\"rId7\"/>"
+                        + "<sheet name=\"Salary Calendar\" sheetId=\"8\" r:id=\"rId8\"/>"
+                        + "<sheet name=\"Balance Corrections\" sheetId=\"9\" r:id=\"rId9\"/>"
                         + "</sheets></workbook>");
                     StringBuilder relationships = new StringBuilder("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
                         + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">");
-                    for (int i = 1; i <= 7; i++) relationships.append("<Relationship Id=\"rId")
+                    for (int i = 1; i <= 9; i++) relationships.append("<Relationship Id=\"rId")
                         .append(i).append("\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet")
                         .append(i).append(".xml\"/>");
-                    relationships.append("<Relationship Id=\"rId8\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>");
+                    relationships.append("<Relationship Id=\"rId10\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>");
                     entry(zip, "xl/_rels/workbook.xml.rels", relationships.toString());
                     entry(zip, "xl/styles.xml",
                         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
@@ -121,6 +125,8 @@ public final class ExcelHistory {
                     writeArchive(zip, database);
                     writeDaily(zip, database);
                     writeOneTimeCommitments(zip, database);
+                    writeSalaryPlans(zip, database);
+                    writeBalanceCorrections(zip, database);
                 }
             }
         }
@@ -284,6 +290,38 @@ public final class ExcelHistory {
                     : item.getRemindDays() + " day(s) before";
             row(zip, index++, item.getId(), item.getTitle(), item.getAmount(),
                     date(item.getDueAt()), reminder, item.getStatus());
+        }
+        end(zip);
+    }
+
+
+    private static void writeSalaryPlans(ZipOutputStream zip, SpendDatabase db)
+            throws IOException {
+        begin(zip, 8, "Month", "Expected Salary Date", "Expected AED",
+                "Status", "Last Updated");
+        try (Cursor c = db.getReadableDatabase().rawQuery(
+                "SELECT month_key,expected_date,amount,status,updated_at "
+                + "FROM salary_plans ORDER BY month_key ASC", null)) {
+            int index = 2;
+            while (c.moveToNext())
+                row(zip, index++, c.getString(0), date(c.getLong(1)),
+                        c.getDouble(2), c.getString(3), date(c.getLong(4)));
+        }
+        end(zip);
+    }
+
+    private static void writeBalanceCorrections(ZipOutputStream zip, SpendDatabase db)
+            throws IOException {
+        begin(zip, 9, "Correction ID", "Bank or Scope", "Actual AED at Correction",
+                "Recorded At", "Transaction ID Anchor");
+        try (Cursor c = db.getReadableDatabase().rawQuery(
+                "SELECT id,bank_source,amount,recorded_at,anchor_transaction_id "
+                + "FROM balance_snapshots ORDER BY id ASC", null)) {
+            int index = 2;
+            while (c.moveToNext())
+                row(zip, index++, c.getLong(0),
+                        c.getString(1).isEmpty() ? "All AED accounts" : c.getString(1),
+                        c.getDouble(2), date(c.getLong(3)), c.getLong(4));
         }
         end(zip);
     }
