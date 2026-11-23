@@ -247,8 +247,9 @@ public class SpendDatabase extends SQLiteOpenHelper {
 
     public synchronized List<String> getBankSourceChoices() {
         List<String> names = new ArrayList<>();
-        for (String name : new String[]{"Ruya","ENBD","ADCB","FAB","Mashreq",
-                "RAKBANK","CBD","ADIB","DIB","HSBC UAE","Manual"}) {
+        for (String name : new String[]{"Ruya","Emirates NBD","ADCB","FAB","Mashreq",
+                "RAKBANK","CBD","ADIB","Dubai Islamic Bank","HSBC UAE",
+                "Standard Chartered UAE","Manual"}) {
             names.add(name);
         }
         try (Cursor c = getReadableDatabase().rawQuery(
