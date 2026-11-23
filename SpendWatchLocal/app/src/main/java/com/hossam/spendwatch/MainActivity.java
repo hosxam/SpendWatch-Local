@@ -331,6 +331,15 @@ public class MainActivity extends Activity {
                 "allocated minus spending", UiKit.GREEN), weightNoEnd());
         content.addView(budgetBalance);
 
+        content.addView(UiKit.gap(this, 10));
+        SpendDatabase.TrackedBalance tracked = database.getTrackedBalance();
+        content.addView(settingRow("ACTUAL ACCOUNT BALANCE",
+                tracked == null ? "Not set · tap to enter your bank balance"
+                        : money(tracked.currentAmount) + " · "
+                          + (tracked.bankSource.isEmpty() ? "All AED accounts" : tracked.bankSource),
+                UiKit.CYAN,
+                () -> startActivity(new Intent(this, MoneyTrackerActivity.class))));
+
         content.addView(UiKit.gap(this, 20));
         sectionRow("LOCAL INTELLIGENCE", "INSIGHTS", () -> { currentTab = 4; renderBottomNav(); renderCurrent(); });
 
@@ -1056,6 +1065,10 @@ public class MainActivity extends Activity {
         sectionRow("MONEY", "", () -> {});
         content.addView(settingRow("Monthly income", database.getMonthlyIncome() > 0 ? money(database.getMonthlyIncome()) : "Not set", UiKit.GREEN, this::showIncomeDialog));
         content.addView(UiKit.gap(this, 8));
+        content.addView(settingRow("Actual bank balance & salary dates",
+                "Correct the current balance; plan a different salary date each month",
+                UiKit.CYAN, () -> startActivity(new Intent(this, MoneyTrackerActivity.class))));
+        content.addView(UiKit.gap(this, 8));
         content.addView(settingRow("Budget envelopes", "Allocations, rollover & sinking funds", UiKit.CYAN,
                 () -> startActivity(new Intent(this, BudgetActivity.class))));
         content.addView(UiKit.gap(this, 8));
@@ -1128,7 +1141,7 @@ public class MainActivity extends Activity {
                 UiKit.RED, this::confirmClearTransactions));
 
         content.addView(UiKit.gap(this, 20));
-        TextView version = UiKit.text(this, "SpendWatch Local 4.6  •  UAE-first  •  SMS only  •  offline", 11, UiKit.MUTED, false);
+        TextView version = UiKit.text(this, "SpendWatch Local 4.7  •  UAE-first  •  SMS only  •  offline", 11, UiKit.MUTED, false);
         version.setGravity(Gravity.CENTER);
         content.addView(version);
     }
@@ -1238,6 +1251,23 @@ public class MainActivity extends Activity {
         type.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, types));
         form.addView(type);
 
+        // Explicit bank selection keeps manual postings in the correct tracked
+        // account. Unassigned manual entries do not alter a bank-specific balance.
+        List<String> manualBanks = new ArrayList<>();
+        manualBanks.add("Manual");
+        for (String name : database.getBankSourceChoices())
+            if (!manualBanks.contains(name)) manualBanks.add(name);
+        Spinner bankSource = new Spinner(this);
+        bankSource.setAdapter(new ArrayAdapter<>(this,
+                android.R.layout.simple_spinner_dropdown_item, manualBanks));
+        SpendDatabase.TrackedBalance tracked = database.getTrackedBalance();
+        if (tracked != null && !tracked.bankSource.isEmpty()) {
+            int idx = manualBanks.indexOf(tracked.bankSource);
+            if (idx >= 0) bankSource.setSelection(idx);
+        }
+        form.addView(UiKit.text(this, "ACCOUNT / BANK", 11, UiKit.MUTED, true));
+        form.addView(bankSource);
+
         new AlertDialog.Builder(this)
                 .setTitle("Add transaction")
                 .setView(form)
@@ -1248,7 +1278,7 @@ public class MainActivity extends Activity {
                         t.setCurrency("AED");
                         t.setMerchant(merchant.getText().toString().trim().isEmpty() ? "Manual entry" : merchant.getText().toString().trim());
                         t.setTimestamp(System.currentTimeMillis());
-                        t.setBankSource("Manual");
+                        t.setBankSource(manualBanks.get(bankSource.getSelectedItemPosition()));
                         t.setRawMessage("Manual transaction");
                         t.setCategory(categories.get(category.getSelectedItemPosition()));
                         t.setTransactionType(types[type.getSelectedItemPosition()]);
