@@ -14,7 +14,7 @@ import java.util.Locale;
 public class SpendDatabase extends SQLiteOpenHelper {
 
     private static final String DATABASE_NAME = "spendwatch_uae.db";
-    private static final int DATABASE_VERSION = 8;
+    private static final int DATABASE_VERSION = 9;
 
     public static final String TABLE_TRANSACTIONS = "transactions";
     public static final String COLUMN_ID = "id";
@@ -34,6 +34,8 @@ public class SpendDatabase extends SQLiteOpenHelper {
     private static final String TABLE_SAVINGS_GOALS = "savings_goals";
     private static final String TABLE_CYCLE_ARCHIVE = "cycle_archive";
     private static final String TABLE_COMMITMENTS = "one_time_commitments";
+    private static final String TABLE_BALANCE_SNAPSHOTS = "balance_snapshots";
+    private static final String TABLE_SALARY_PLANS = "salary_plans";
     // Explicit user corrections only, separate from automatically guessed categories.
     private static final String TABLE_MERCHANT_RULES = "merchant_category_rules";
 
@@ -58,6 +60,7 @@ public class SpendDatabase extends SQLiteOpenHelper {
         createSavingsGoalsTable(db);
         createHistoryTables(db);
         createCommitmentsTable(db);
+        createBalanceAndSalaryTables(db);
         seedDefaultBudgets(db);
     }
 
@@ -137,6 +140,196 @@ public class SpendDatabase extends SQLiteOpenHelper {
         } catch (android.database.SQLException alreadyExists) {
             // Column already exists in an updated installation.
         }
+    }
+
+
+    // A manual balance is a snapshot of ONE chosen account, or explicitly of
+    // combined AED accounts. Prior history is never subtracted a second time.
+    private void createBalanceAndSalaryTables(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_BALANCE_SNAPSHOTS + " ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "bank_source TEXT NOT NULL, "
+                + "amount REAL NOT NULL, "
+                + "anchor_transaction_id INTEGER NOT NULL, "
+                + "recorded_at INTEGER NOT NULL"
+                + ")");
+        db.execSQL("CREATE TABLE IF NOT EXISTS " + TABLE_SALARY_PLANS + " ("
+                + "month_key TEXT PRIMARY KEY, "
+                + "expected_date INTEGER NOT NULL, "
+                + "amount REAL NOT NULL, "
+                + "status TEXT NOT NULL DEFAULT 'expected', "
+                + "updated_at INTEGER NOT NULL"
+                + ")");
+    }
+
+    public static final class TrackedBalance {
+        public final String bankSource;
+        public final double openingAmount;
+        public final double currentAmount;
+        public final long recordedAt;
+        public final long anchorTransactionId;
+
+        TrackedBalance(String bankSource, double openingAmount,
+                double currentAmount, long recordedAt, long anchorTransactionId) {
+            this.bankSource = bankSource;
+            this.openingAmount = openingAmount;
+            this.currentAmount = currentAmount;
+            this.recordedAt = recordedAt;
+            this.anchorTransactionId = anchorTransactionId;
+        }
+    }
+
+    /**
+     * Correct the tracked balance to the user's actual balance NOW.
+     * This records a new reconciliation snapshot without modifying transactions,
+     * envelope allocations, savings, or older balance snapshots.
+     * Empty bankSource explicitly means ALL AED accounts combined.
+     */
+    public synchronized boolean setTrackedBalance(double amount, String bankSource) {
+        if (!Double.isFinite(amount) || Math.abs(amount) > 1_000_000_000_000d)
+            return false;
+        if (bankSource == null || bankSource.length() > 80) return false;
+        SQLiteDatabase db = getWritableDatabase();
+        long lastId;
+        try (Cursor c = db.rawQuery(
+                "SELECT COALESCE(MAX(id),0) FROM " + TABLE_TRANSACTIONS, null)) {
+            lastId = c.moveToFirst() ? c.getLong(0) : 0L;
+        }
+        ContentValues values = new ContentValues();
+        values.put("bank_source", bankSource.trim());
+        values.put("amount", amount);
+        values.put("anchor_transaction_id", lastId);
+        values.put("recorded_at", System.currentTimeMillis());
+        return db.insert(TABLE_BALANCE_SNAPSHOTS, null, values) > 0;
+    }
+
+    public synchronized TrackedBalance getTrackedBalance() {
+        SQLiteDatabase db = getReadableDatabase();
+        String bank;
+        double opening;
+        long anchor, created;
+        try (Cursor c = db.rawQuery("SELECT bank_source,amount,"
+                + "anchor_transaction_id,recorded_at FROM "
+                + TABLE_BALANCE_SNAPSHOTS + " ORDER BY id DESC LIMIT 1", null)) {
+            if (!c.moveToFirst()) return null;
+            bank = c.getString(0);
+            opening = c.getDouble(1);
+            anchor = c.getLong(2);
+            created = c.getLong(3);
+        }
+        String bankFilter = bank.isEmpty() ? "" :
+                " AND LOWER(COALESCE(bank_source,''))=LOWER(?)";
+        String query = "SELECT COALESCE(SUM(CASE"
+                + " WHEN transaction_type IN ('income','refund') THEN amount"
+                + " WHEN transaction_type IN ('card_purchase','pos','online',"
+                + "'atm','direct_debit','fee','other_expense','transfer_sent')"
+                + " THEN -amount ELSE 0 END),0)"
+                + " FROM " + TABLE_TRANSACTIONS
+                + " WHERE id>? AND currency='AED' AND is_ignored=0" + bankFilter;
+        String[] args = bank.isEmpty()
+                ? new String[]{Long.toString(anchor)}
+                : new String[]{Long.toString(anchor), bank};
+        double delta;
+        try (Cursor c = db.rawQuery(query, args)) {
+            delta = c.moveToFirst() ? c.getDouble(0) : 0d;
+        }
+        return new TrackedBalance(bank, opening, opening + delta, created, anchor);
+    }
+
+    /** Historical manual corrections remain inspectable and are never double-counted. */
+    public synchronized int getTrackedBalanceCorrectionCount() {
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT COUNT(*) FROM " + TABLE_BALANCE_SNAPSHOTS, null)) {
+            return c.moveToFirst() ? c.getInt(0) : 0;
+        }
+    }
+
+    public synchronized List<String> getBankSourceChoices() {
+        List<String> names = new ArrayList<>();
+        for (String name : new String[]{"Ruya","ENBD","ADCB","FAB","Mashreq",
+                "RAKBANK","CBD","ADIB","DIB","HSBC UAE","Manual"}) {
+            names.add(name);
+        }
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT DISTINCT bank_source FROM " + TABLE_TRANSACTIONS
+                + " WHERE bank_source IS NOT NULL AND bank_source<>''"
+                + " ORDER BY bank_source", null)) {
+            while (c.moveToNext()) {
+                String name = c.getString(0);
+                boolean found = false;
+                for (String known : names)
+                    if (known.equalsIgnoreCase(name)) { found = true; break; }
+                if (!found) names.add(name);
+            }
+        }
+        return names;
+    }
+
+    public static final class SalaryPlan {
+        public final String monthKey;
+        public final long expectedDate;
+        public final double amount;
+        public final String status;
+
+        SalaryPlan(String monthKey, long expectedDate, double amount, String status) {
+            this.monthKey = monthKey;
+            this.expectedDate = expectedDate;
+            this.amount = amount;
+            this.status = status;
+        }
+    }
+
+    public static String salaryMonthKey(long date) {
+        Calendar c = Calendar.getInstance();
+        c.setTimeInMillis(date);
+        return String.format(Locale.US, "%04d-%02d",
+                c.get(Calendar.YEAR), c.get(Calendar.MONTH) + 1);
+    }
+
+    /** Plans are expectations only: saving/receiving a plan NEVER creates income. */
+    public synchronized boolean saveSalaryPlan(long expectedDate, double amount) {
+        if (expectedDate <= 0 || !Double.isFinite(amount)
+                || amount <= 0 || amount > 1_000_000_000_000d) return false;
+        ContentValues values = new ContentValues();
+        values.put("month_key", salaryMonthKey(expectedDate));
+        values.put("expected_date", expectedDate);
+        values.put("amount", amount);
+        values.put("status", "expected");
+        values.put("updated_at", System.currentTimeMillis());
+        return getWritableDatabase().insertWithOnConflict(TABLE_SALARY_PLANS,
+                null, values, SQLiteDatabase.CONFLICT_REPLACE) != -1;
+    }
+
+    public synchronized List<SalaryPlan> getSalaryPlans() {
+        List<SalaryPlan> list = new ArrayList<>();
+        try (Cursor c = getReadableDatabase().rawQuery(
+                "SELECT month_key,expected_date,amount,status FROM "
+                + TABLE_SALARY_PLANS + " ORDER BY month_key DESC", null)) {
+            while (c.moveToNext())
+                list.add(new SalaryPlan(c.getString(0), c.getLong(1),
+                        c.getDouble(2), c.getString(3)));
+        }
+        return list;
+    }
+
+    public synchronized boolean markSalaryReceived(String monthKey) {
+        ContentValues values = new ContentValues();
+        values.put("status", "received");
+        values.put("updated_at", System.currentTimeMillis());
+        return getWritableDatabase().update(TABLE_SALARY_PLANS, values,
+                "month_key=? AND status='expected'",
+                new String[]{monthKey}) == 1;
+    }
+
+    public synchronized boolean deleteSalaryPlan(String monthKey) {
+        return getWritableDatabase().delete(TABLE_SALARY_PLANS,
+                "month_key=?", new String[]{monthKey}) == 1;
+    }
+
+    // Instrumentation isolation only; never exposed as a user-facing reset.
+    synchronized void clearBalanceSalaryTestData() {
+        getWritableDatabase().delete(TABLE_BALANCE_SNAPSHOTS, null, null);
+        getWritableDatabase().delete(TABLE_SALARY_PLANS, null, null);
     }
 
     private void createCommitmentsTable(SQLiteDatabase db) {
